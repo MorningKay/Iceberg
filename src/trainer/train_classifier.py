@@ -43,6 +43,7 @@ class TrainConfig:
     logging_steps: int = 50
     save_steps: int = 500
     eval_steps: int = 500
+    eval_strategy: str = "steps"
     seed: int = 42
     fp16: bool = False
     bf16: bool = False
@@ -84,6 +85,7 @@ def _merge_config(cli_args: argparse.Namespace) -> TrainConfig:
         "logging_steps",
         "save_steps",
         "eval_steps",
+        "eval_strategy",
         "seed",
         "fp16",
         "bf16",
@@ -232,6 +234,7 @@ def main() -> None:
     parser.add_argument("--logging_steps", type=int)
     parser.add_argument("--save_steps", type=int)
     parser.add_argument("--eval_steps", type=int)
+    parser.add_argument("--eval_strategy")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--bf16", action="store_true")
@@ -290,7 +293,7 @@ def main() -> None:
         weight_decay=cfg.weight_decay,
         warmup_ratio=cfg.warmup_ratio,
         logging_steps=cfg.logging_steps,
-        evaluation_strategy="steps",
+        eval_strategy=cfg.eval_strategy,
         save_strategy="steps",
         save_steps=cfg.save_steps,
         eval_steps=cfg.eval_steps,
