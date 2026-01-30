@@ -382,6 +382,7 @@ classifier = [
     { name = "accelerate" },
     { name = "datasets" },
     { name = "evaluate" },
+    { name = "pyyaml" },
     { name = "rich" },
     { name = "scikit-learn" },
     { name = "tqdm" },
@@ -389,7 +390,6 @@ classifier = [
 ]
 dev = [
     { name = "pytest" },
-    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
@@ -400,6 +400,7 @@ classifier = [
     { name = "accelerate", specifier = ">=1.12.0" },
     { name = "datasets", specifier = ">=4.5.0" },
     { name = "evaluate", specifier = ">=0.4.6" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=14.3.1" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "tqdm", specifier = ">=4.67.1" },
@@ -407,7 +408,6 @@ classifier = [
 ]
 dev = [
     { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruff", specifier = ">=0.14.14" },
 ]
 
