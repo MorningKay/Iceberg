@@ -8,3 +8,17 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Large Files (Datasets, Models)
+/data/
+/models/
+outputs
+*.pt
+*.bin
+*.safetensors
+*.ckpt
+*.log
+
+# AI Assistant
+AGENTS.md
+docs
