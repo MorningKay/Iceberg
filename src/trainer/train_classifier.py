@@ -310,7 +310,6 @@ def main() -> None:
         args=args_train,
         train_dataset=tokenized["train"],
         eval_dataset=tokenized["validation"],
-        tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=_compute_metrics,
     )
@@ -331,7 +330,7 @@ def main() -> None:
         {"label2id": LABEL2ID, "id2label": ID2LABEL},
     )
 
-    model.save_pretrained(output_dir)
+    trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
 
 
