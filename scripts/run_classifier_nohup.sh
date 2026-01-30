@@ -25,5 +25,5 @@ nohup uv run python -m src.trainer.train_classifier \
 PID=$!
 echo "$PID" > "$RUN_DIR/pid.txt"
 echo "Started training. PID: $PID"
-echo "Logs: $LOG_FILE"
+echo "Logs: tail -f $LOG_FILE"
 echo "Stop: kill \$(cat $RUN_DIR/pid.txt)"
