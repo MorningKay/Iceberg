@@ -19,6 +19,9 @@ outputs
 *.ckpt
 *.log
 
+# Ascend / NPU kernel cache
+/kernel_meta/
+
 # AI Assistant
 AGENTS.md
 docs
