@@ -22,6 +22,9 @@ outputs
 # Ascend / NPU kernel cache
 /kernel_meta/
 
+# fusion
+fusion_result.json
+
 # AI Assistant
 AGENTS.md
 docs
