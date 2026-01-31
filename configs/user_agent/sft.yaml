@@ -1,0 +1,45 @@
+# LLaMA-Factory SFT config template for user-agent fine-tuning (ShareGPT JSON).
+# Placeholders are replaced by the run script:
+# - MODEL_NAME_OR_PATH_PLACEHOLDER
+# - OUTPUT_DIR_PLACEHOLDER
+# - DATASET_DIR_PLACEHOLDER
+
+stage: sft
+do_train: true
+
+model_name_or_path: MODEL_NAME_OR_PATH_PLACEHOLDER
+output_dir: OUTPUT_DIR_PLACEHOLDER
+
+dataset: user_agent_sharegpt
+dataset_dir: DATASET_DIR_PLACEHOLDER
+template: sharegpt
+
+cutoff_len: 1024
+max_samples: 500000
+overwrite_cache: true
+preprocessing_num_workers: 16
+
+logging_steps: 10
+save_steps: 500
+plot_loss: true
+overwrite_output_dir: true
+
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+
+val_size: 0.1
+per_device_eval_batch_size: 1
+eval_strategy: steps
+eval_steps: 500
+
+finetuning_type: lora
+lora_target: all
+
+train_on_prompt: true
+train_on_response: false
