@@ -18,9 +18,10 @@ cutoff_len: 1024
 max_samples: 500000
 overwrite_cache: true
 preprocessing_num_workers: 16
+num_train_epochs: 1.0
 
 logging_steps: 10
-save_steps: 500
+save_steps: 50
 plot_loss: true
 overwrite_output_dir: true
 
@@ -36,7 +37,7 @@ ddp_timeout: 180000000
 val_size: 0.1
 per_device_eval_batch_size: 1
 eval_strategy: steps
-eval_steps: 500
+eval_steps: 50
 
 finetuning_type: lora
 lora_target: all
