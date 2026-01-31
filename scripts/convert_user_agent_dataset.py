@@ -32,7 +32,10 @@ def _extract_round_texts(round_item: Dict[str, Any]) -> Tuple[Optional[str], Opt
     return listener_text, speaker_text
 
 
-def _build_conversations(sample: Dict[str, Any], background_field: str) -> Tuple[List[Dict[str, str]], int]:
+def _build_conversations(
+    sample: Dict[str, Any],
+    background_field: str,
+) -> Tuple[List[Dict[str, str]], int, int]:
     background = (sample.get(background_field) or "").strip()
     conversations: List[Dict[str, str]] = [
         {"from": "system", "value": SYSTEM_PROMPT},
@@ -40,10 +43,12 @@ def _build_conversations(sample: Dict[str, Any], background_field: str) -> Tuple
     ]
 
     skipped_rounds = 0
+    pairs_written = 0
     dialogue = sample.get("dialogue", [])
     if not isinstance(dialogue, list):
-        return conversations, 0
+        return conversations, 0, 0
 
+    pairs: List[Tuple[str, str]] = []
     for round_item in dialogue:
         if not isinstance(round_item, dict):
             skipped_rounds += 1
@@ -52,10 +57,15 @@ def _build_conversations(sample: Dict[str, Any], background_field: str) -> Tuple
         if not listener_text or not speaker_text:
             skipped_rounds += 1
             continue
-        conversations.append({"from": "user", "value": listener_text})
-        conversations.append({"from": "assistant", "value": speaker_text})
+        pairs.append((speaker_text, listener_text))
 
-    return conversations, skipped_rounds
+    for index, (speaker_text, listener_text) in enumerate(pairs):
+        conversations.append({"from": "assistant", "value": speaker_text})
+        pairs_written += 1
+        if index < len(pairs) - 1:
+            conversations.append({"from": "user", "value": listener_text})
+
+    return conversations, skipped_rounds, pairs_written
 
 
 def main() -> None:
@@ -74,17 +84,19 @@ def main() -> None:
     output: List[Dict[str, Any]] = []
     total_rounds = 0
     skipped_rounds = 0
+    pairs_written = 0
     processed_samples = 0
 
     for sample in data:
         if not isinstance(sample, dict):
             continue
-        conversations, skipped = _build_conversations(sample, args.background_field)
+        conversations, skipped, pairs = _build_conversations(sample, args.background_field)
         output.append({"conversations": conversations})
         processed_samples += 1
         if isinstance(sample.get("dialogue"), list):
             total_rounds += len(sample["dialogue"])
         skipped_rounds += skipped
+        pairs_written += pairs
         if args.max_samples is not None and processed_samples >= args.max_samples:
             break
 
@@ -98,6 +110,8 @@ def main() -> None:
         total_rounds,
         "Skipped rounds:",
         skipped_rounds,
+        "Pairs written:",
+        pairs_written,
         "Output:",
         args.output_json,
     )
