@@ -69,8 +69,7 @@ cat > "$DATASET_INFO" <<EOF
     "formatting": "sharegpt",
     "columns": {
       "messages": "conversations",
-      "role": "from",
-      "content": "value"
+      "system": "system"
     }
   }
 }

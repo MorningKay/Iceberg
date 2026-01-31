@@ -35,11 +35,10 @@ def _extract_round_texts(round_item: Dict[str, Any]) -> Tuple[Optional[str], Opt
 def _build_conversations(
     sample: Dict[str, Any],
     background_field: str,
-) -> Tuple[List[Dict[str, str]], int, int]:
+) -> Tuple[Dict[str, Any], int, int]:
     background = (sample.get(background_field) or "").strip()
     conversations: List[Dict[str, str]] = [
-        {"from": "system", "value": SYSTEM_PROMPT},
-        {"from": "user", "value": f"<INIT>\n{background}"},
+        {"from": "human", "value": f"<INIT>\n{background}"},
     ]
 
     skipped_rounds = 0
@@ -60,12 +59,16 @@ def _build_conversations(
         pairs.append((speaker_text, listener_text))
 
     for index, (speaker_text, listener_text) in enumerate(pairs):
-        conversations.append({"from": "assistant", "value": speaker_text})
+        conversations.append({"from": "gpt", "value": speaker_text})
         pairs_written += 1
         if index < len(pairs) - 1:
-            conversations.append({"from": "user", "value": listener_text})
+            conversations.append({"from": "human", "value": listener_text})
 
-    return conversations, skipped_rounds, pairs_written
+    sample_obj = {
+        "conversations": conversations,
+        "system": SYSTEM_PROMPT,
+    }
+    return sample_obj, skipped_rounds, pairs_written
 
 
 def main() -> None:
@@ -90,8 +93,8 @@ def main() -> None:
     for sample in data:
         if not isinstance(sample, dict):
             continue
-        conversations, skipped, pairs = _build_conversations(sample, args.background_field)
-        output.append({"conversations": conversations})
+        sample_obj, skipped, pairs = _build_conversations(sample, args.background_field)
+        output.append(sample_obj)
         processed_samples += 1
         if isinstance(sample.get("dialogue"), list):
             total_rounds += len(sample["dialogue"])
