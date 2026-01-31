@@ -76,7 +76,7 @@ cat > "$DATASET_INFO" <<EOF
 }
 EOF
 
-nohup uv --directory lf run llamafactory-cli train "$RUNTIME_CONFIG" > "$LOG_FILE" 2>&1 &
+nohup uv --project lf run llamafactory-cli train "$RUNTIME_CONFIG" > "$LOG_FILE" 2>&1 &
 
 PID=$!
 printf "%s\n" "$PID" > "$PID_FILE"

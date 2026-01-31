@@ -41,5 +41,4 @@ eval_steps: 500
 finetuning_type: lora
 lora_target: all
 
-train_on_prompt: true
-train_on_response: false
+train_on_prompt: false
