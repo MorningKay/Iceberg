@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Teacher-forcing evaluation for the user-agent model."""
 
 from __future__ import annotations
@@ -6,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from src.models.infer_user_agent import generate_next, load_user_agent
 
