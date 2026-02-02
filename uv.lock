@@ -368,7 +368,7 @@ version = "0.1.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
-classifier = [
+cls = [
     { name = "accelerate" },
     { name = "datasets" },
     { name = "decorator" },
@@ -386,11 +386,24 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+rl = [
+    { name = "accelerate" },
+    { name = "datasets" },
+    { name = "numpy" },
+    { name = "peft" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "torch", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "torch-npu", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "tqdm" },
+    { name = "transformers" },
+    { name = "trl" },
+]
 
 [package.metadata]
 
 [package.metadata.requires-dev]
-classifier = [
+cls = [
     { name = "accelerate", specifier = ">=1.12.0" },
     { name = "datasets", specifier = ">=4.5.0" },
     { name = "decorator" },
@@ -407,6 +420,19 @@ classifier = [
 dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.14.14" },
+]
+rl = [
+    { name = "accelerate", specifier = ">=1.12.0" },
+    { name = "datasets", specifier = ">=4.5.0" },
+    { name = "numpy", specifier = "<2.0" },
+    { name = "peft", specifier = ">=0.12.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "rich", specifier = ">=14.3.1" },
+    { name = "torch", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = "==2.9.0" },
+    { name = "torch-npu", marker = "platform_machine == 'aarch64' and sys_platform == 'linux'", specifier = "==2.9.0" },
+    { name = "tqdm", specifier = ">=4.67.1" },
+    { name = "transformers", specifier = ">=5.0.0" },
+    { name = "trl", specifier = ">=0.11.0" },
 ]
 
 [[package]]
@@ -731,6 +757,27 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/df/91/82cc5169b6b25440a7fc0ef3a694582418d875c8e3ebf796a6d6470aa578/pandas-2.3.3-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:4793891684806ae50d1288c9bae9330293ab4e083ccd1c5e383c34549c6e4250", size = 13200444, upload-time = "2025-09-29T23:17:49.341Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/10/ae/89b3283800ab58f7af2952704078555fa60c807fff764395bb57ea0b0dbd/pandas-2.3.3-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:28083c648d9a99a5dd035ec125d42439c6c1c525098c58af0fc38dd1a7a1b3d4", size = 13858459, upload-time = "2025-09-29T23:18:03.722Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/85/72/530900610650f54a35a19476eca5104f38555afccda1aa11a92ee14cb21d/pandas-2.3.3-cp310-cp310-win_amd64.whl", hash = "sha256:503cf027cf9940d2ceaa1a93cfb5f8c8c7e6e90720a2850378f0b3f3b1e06826", size = 11346086, upload-time = "2025-09-29T23:18:18.505Z" },
+]
+
+[[package]]
+name = "peft"
+version = "0.18.1"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "accelerate" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "psutil" },
+    { name = "pyyaml" },
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "transformers" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/d8/48/147b3ea999560b40a34fd78724c7777aa9d18409c2250bdcaf9c4f2db7fc/peft-0.18.1.tar.gz", hash = "sha256:2dd0d6bfce936d1850e48aaddbd250941c5c02fc8ef3237cd8fd5aac35e0bae2", size = 635030, upload-time = "2026-01-09T13:08:01.136Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/b3/14/b4e3f574acf349ae6f61f9c000a77f97a3b315b4bb6ad03791e79ae4a568/peft-0.18.1-py3-none-any.whl", hash = "sha256:0bf06847a3551e3019fc58c440cffc9a6b73e6e2962c95b52e224f77bbdb50f1", size = 556960, upload-time = "2026-01-09T13:07:55.865Z" },
 ]
 
 [[package]]
@@ -1169,6 +1216,21 @@ version = "3.5.0"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
 wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/0b/eb/09e31d107a5d00eb281aa7e6635ca463e9bca86515944e399480eadb71f8/triton-3.5.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d5d3b3d480debf24eaa739623c9a42446b0b77f95593d30eb1f64cd2278cc1f0", size = 170333110, upload-time = "2025-10-13T16:37:49.588Z" },
+]
+
+[[package]]
+name = "trl"
+version = "0.27.1"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "accelerate" },
+    { name = "datasets" },
+    { name = "packaging" },
+    { name = "transformers" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/2a/85/e0151f2bc006722c032fad942d442ac3cfe1e25b770fca3a6c50e599a89c/trl-0.27.1.tar.gz", hash = "sha256:9d502626c3ac1d32cdc7d8978c742de31bfc11135b4d15be1d83909632dcb75c", size = 449005, upload-time = "2026-01-24T03:33:56.977Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/08/49/6b03bdbb26c4f4f962624014fe7ae4ea91834286f4387ad0d3748bf21c6f/trl-0.27.1-py3-none-any.whl", hash = "sha256:641843c8556516c39896113b79c9b0b668236670b3eae3697107117c75cc65eb", size = 532873, upload-time = "2026-01-24T03:33:55.195Z" },
 ]
 
 [[package]]
