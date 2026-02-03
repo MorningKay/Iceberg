@@ -110,7 +110,18 @@ def trl_reward_func(
 
     if layer_history_batch is None or num_user_turns_batch is None:
         raise ValueError(
-            "rollout_func must return layer_history and num_user_turns for reward computation"
+            "rollout_func must return layer_history and num_user_turns as per-sample lists "
+            "(append, not extend). Ensure len(layer_history)==len(completions)==len(num_user_turns)."
+        )
+
+    if len(layer_history_batch) != len(num_user_turns_batch) or len(layer_history_batch) != len(
+        completions
+    ):
+        raise ValueError(
+            "Mismatch in rollout metadata lengths:\n"
+            f"len(layer_history)={len(layer_history_batch)},\n"
+            f"len(num_user_turns)={len(num_user_turns_batch)},\n"
+            f"len(completions)={len(completions)}.\n"
         )
 
     rewards: List[float] = []

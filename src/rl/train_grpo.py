@@ -127,8 +127,13 @@ def _rollout_func(prompts, trainer, **kwargs):
             cfg=rollout_cfg,
             reward_config=meta.get("reward_config"),
         )
-        for key in results:
-            results[key].extend(episode.get(key, []))
+        results["prompt_ids"].append(episode.get("prompt_ids", []))
+        results["completion_ids"].append(episode.get("completion_ids", []))
+        results["logprobs"].append(episode.get("logprobs", []))
+        results["layer_history"].append(episode.get("layer_history", []))
+        results["terminate_reason"].append(episode.get("terminate_reason", ""))
+        results["num_user_turns"].append(episode.get("num_user_turns", 0))
+        results["reward_config"].append(episode.get("reward_config", {}))
     return results
 
 

@@ -207,15 +207,15 @@ def run_episode(
         state.num_user_turns += 1
 
     result = {
-        "prompt_ids": [prompt_ids if prompt_ids is not None else []],
-        "completion_ids": [completion_ids],
-        "logprobs": [logprobs],
-        "layer_history": [state.layer_history],
-        "terminate_reason": [state.terminate_reason],
-        "num_user_turns": [state.num_user_turns],
-        "reward_config": [reward_config],
+        "prompt_ids": prompt_ids if prompt_ids is not None else [],
+        "completion_ids": completion_ids,
+        "logprobs": logprobs,
+        "layer_history": state.layer_history,
+        "terminate_reason": state.terminate_reason,
+        "num_user_turns": state.num_user_turns,
+        "reward_config": reward_config,
     }
     if cfg.return_texts:
-        result["assistant_texts"] = [assistant_texts]
-        result["user_texts"] = [user_texts]
+        result["assistant_texts"] = assistant_texts
+        result["user_texts"] = user_texts
     return result
