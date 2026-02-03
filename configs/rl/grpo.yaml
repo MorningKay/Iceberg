@@ -1,0 +1,63 @@
+model_name_or_path: models/Qwen2.5-7B-Instruct
+user_agent_base_model: models/Qwen2.5-7B-Instruct
+user_agent_adapter_dir: models/user_agent_best
+classifier_checkpoint_dir: models/iceberg_classifier
+
+dataset_path: data/rl_prompts.json
+
+output_dir: auto
+
+max_turns: 20
+user_max_new_tokens: 128
+user_temperature: 0.7
+user_top_p: 0.9
+user_do_sample: true
+
+main_max_new_tokens: 128
+main_temperature: 0.7
+main_top_p: 0.9
+main_do_sample: true
+
+num_generations: 4
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 1
+learning_rate: 5.0e-6
+max_steps: 1000
+logging_steps: 10
+save_steps: 100
+seed: 42
+report_to:
+  - wandb
+run_name: grpo
+disable_tqdm: false
+log_level: info
+wandb_project: Iceberg-GRPO
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# Reward config defaults (override per-sample via reward_config dict if needed).
+beta: 0.2
+delta: 0.5
+kappa: 10.0
+c: 0.5
+stage_penalty: 0.4
+delta_rep: 0.1
+rep_window: 5
+k2: 4.0
+c2: 0.0
+max_depth: 5
+bonus_depth: 0.0
+bonus_progress: 0.0
+bonus_progress_min: 0
+penalty_empty_user: 0.0
+penalty_early_terminate: 0.0
