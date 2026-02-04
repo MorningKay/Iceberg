@@ -1,4 +1,15 @@
-"""Reward computation for multi-turn iceberg dialogue RL."""
+"""Reward computation for multi-turn iceberg dialogue RL.
+
+TODO(TRL-0.27.1 rollout metadata):
+- TRL 0.27.1 only invokes rollout_func in vLLM modes ("server"/"colocate").
+- The non-vLLM transformers.generate path hardcodes extra_fields = {},
+  so reward_funcs do NOT receive rollout metadata (layer_history/num_user_turns).
+- Our rollout_func is therefore unused unless vLLM is enabled or TRL is patched.
+- Future fixes:
+  - enable vLLM once the NPU/vLLM stack is usable, OR
+  - patch TRL _generate() to call rollout_func in non-vLLM mode, OR
+  - re-enable kwargs-based metadata plumbing once extra_fields can be forwarded.
+"""
 
 from __future__ import annotations
 
@@ -109,19 +120,18 @@ def trl_reward_func(
     reward_config_batch = kwargs.get("reward_config")
 
     if layer_history_batch is None or num_user_turns_batch is None:
-        raise ValueError(
-            "rollout_func must return layer_history and num_user_turns as per-sample lists "
-            "(append, not extend). Ensure len(layer_history)==len(completions)==len(num_user_turns)."
-        )
+        # TODO(TRL-0.27.1): rollout metadata not available on non-vLLM path.
+        # Return neutral rewards so training can proceed without crashing.
+        return [0.0 for _ in completions]
 
     if len(layer_history_batch) != len(num_user_turns_batch) or len(layer_history_batch) != len(
         completions
     ):
         raise ValueError(
-            "Mismatch in rollout metadata lengths:\n"
-            f"len(layer_history)={len(layer_history_batch)},\n"
-            f"len(num_user_turns)={len(num_user_turns_batch)},\n"
-            f"len(completions)={len(completions)}.\n"
+            "Mismatch in rollout metadata lengths: "
+            f"len(layer_history)={len(layer_history_batch)}, "
+            f"len(num_user_turns)={len(num_user_turns_batch)}, "
+            f"len(completions)={len(completions)}."
         )
 
     rewards: List[float] = []

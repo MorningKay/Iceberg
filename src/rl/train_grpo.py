@@ -93,6 +93,9 @@ def _build_train_config(config_path: str) -> TrainConfig:
 
 
 def _rollout_func(prompts, trainer, **kwargs):
+    # TODO(TRL-0.27.1): This rollout_func is only used in vLLM modes ("server"/"colocate").
+    # The non-vLLM transformers.generate path hardcodes extra_fields = {} and bypasses
+    # rollout_func entirely, so reward_funcs will not receive rollout metadata.
     main_model = trainer.model
     main_tokenizer = trainer.processing_class
     user_bundle = trainer.user_agent_bundle
