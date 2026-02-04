@@ -98,6 +98,7 @@ def _rollout_func(prompts, trainer, **kwargs):
     user_bundle = trainer.user_agent_bundle
     classifier = trainer.classifier
     rollout_cfg = trainer.rollout_config
+    num_generations = int(getattr(trainer.args, "num_generations", 1))
 
     results = {
         "prompt_ids": [],
@@ -117,23 +118,34 @@ def _rollout_func(prompts, trainer, **kwargs):
         else:
             prompt_text = prompt
 
-        episode = run_episode(
-            prompt=prompt_text,
-            first_explanation=meta.get("first_explanation", ""),
-            main_model=main_model,
-            main_tokenizer=main_tokenizer,
-            user_agent_bundle=user_bundle,
-            classifier=classifier,
-            cfg=rollout_cfg,
-            reward_config=meta.get("reward_config"),
+        for _ in range(num_generations):
+            episode = run_episode(
+                prompt=prompt_text,
+                first_explanation=meta.get("first_explanation", ""),
+                main_model=main_model,
+                main_tokenizer=main_tokenizer,
+                user_agent_bundle=user_bundle,
+                classifier=classifier,
+                cfg=rollout_cfg,
+                reward_config=meta.get("reward_config"),
+            )
+            results["prompt_ids"].append(episode.get("prompt_ids", []))
+            results["completion_ids"].append(episode.get("completion_ids", []))
+            results["logprobs"].append(episode.get("logprobs", []))
+            results["layer_history"].append(episode.get("layer_history", []))
+            results["terminate_reason"].append(episode.get("terminate_reason", ""))
+            results["num_user_turns"].append(episode.get("num_user_turns", 0))
+            results["reward_config"].append(episode.get("reward_config", {}))
+
+    expected = len(prompts) * num_generations
+    assert len(results["completion_ids"]) == expected
+    assert len(results["layer_history"]) == expected
+    assert len(results["num_user_turns"]) == expected
+    if expected > 0:
+        print(
+            "rollout_func lengths:",
+            {k: len(v) for k, v in results.items()},
         )
-        results["prompt_ids"].append(episode.get("prompt_ids", []))
-        results["completion_ids"].append(episode.get("completion_ids", []))
-        results["logprobs"].append(episode.get("logprobs", []))
-        results["layer_history"].append(episode.get("layer_history", []))
-        results["terminate_reason"].append(episode.get("terminate_reason", ""))
-        results["num_user_turns"].append(episode.get("num_user_turns", 0))
-        results["reward_config"].append(episode.get("reward_config", {}))
     return results
 
 
