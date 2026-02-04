@@ -129,3 +129,24 @@ class IcebergClassifier:
 
         prob_map = {self.id2label[i]: float(probs[i]) for i in range(len(self.id2label))}
         return pred_label, prob_map
+
+    def predict(self, text: str) -> Tuple[int, str, float]:
+        text = text or ""
+        try:
+            pred_label, prob_map = self.predict_with_probs(text)
+        except Exception:
+            pred_label = self.id2label.get(0, "behavior")
+            prob_map = {self.id2label[i]: 0.0 for i in range(len(self.id2label))}
+            prob_map[pred_label] = 1e-6
+
+        if pred_label not in self.label2id:
+            pred_label = self.id2label.get(0, "behavior")
+        class_id = int(self.label2id[pred_label])
+        assert 0 <= class_id <= 4
+        layer = class_id + 1
+        assert 1 <= layer <= 5
+        assert pred_label == self.id2label[class_id]
+        conf = float(prob_map.get(pred_label, 0.0))
+        if not (conf > 0.0):
+            conf = 1e-6
+        return layer, pred_label, conf
