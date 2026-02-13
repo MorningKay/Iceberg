@@ -28,7 +28,6 @@ class TrainConfig:
     user_agent_adapter_dir: str
     classifier_checkpoint_dir: str
     dataset_path: str
-    output_dir: str
     max_turns: int = 8
     user_max_new_tokens: int = 128
     user_temperature: float = 0.7
@@ -72,7 +71,6 @@ def _build_train_config(config_path: str) -> TrainConfig:
         user_agent_adapter_dir=data["user_agent_adapter_dir"],
         classifier_checkpoint_dir=data["classifier_checkpoint_dir"],
         dataset_path=data["dataset_path"],
-        output_dir=data["output_dir"],
     )
     for key, value in data.items():
         if hasattr(cfg, key):
@@ -155,14 +153,12 @@ def _rollout_func(prompts, trainer, **kwargs):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/rl/grpo.yaml")
+    parser.add_argument("--output_dir", help="Output directory")
     args = parser.parse_args()
 
     cfg = _build_train_config(args.config)
 
-    output_dir = cfg.output_dir
-    if output_dir == "auto":
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"outputs/grpo/{timestamp}"
+    output_dir = args.output_dir
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name_or_path)
     model = AutoModelForCausalLM.from_pretrained(cfg.model_name_or_path)

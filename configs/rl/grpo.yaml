@@ -5,8 +5,6 @@ classifier_checkpoint_dir: models/iceberg_classifier
 
 dataset_path: data/rl_prompts.json
 
-output_dir: auto
-
 max_turns: 20
 user_max_new_tokens: 128
 user_temperature: 0.7

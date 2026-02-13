@@ -27,7 +27,10 @@ cp "$CONFIG_YAML" "$RUN_DIR/config_snapshot.yaml"
 LOG_FILE="$RUN_DIR/train.log"
 PID_FILE="$RUN_DIR/pid.txt"
 
-OUTPUT_DIR="$RUN_DIR" nohup uv run python -m src.rl.train_grpo --config "$CONFIG_YAML" > "$LOG_FILE" 2>&1 &
+OUTPUT_DIR="$RUN_DIR" nohup uv run python -m src.rl.train_grpo \
+  --config "$CONFIG_YAML" \
+  --output_dir "$RUN_DIR" \
+  > "$LOG_FILE" 2>&1 &
 PID=$!
 printf "%s\n" "$PID" > "$PID_FILE"
 
