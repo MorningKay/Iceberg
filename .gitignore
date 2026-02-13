@@ -28,6 +28,13 @@ fusion_result.json
 # Log File
 wandb/
 
+# Evaluation metrics
+accuracy/
+f1/
+
+# vscode configure
+.vscode
+
 # AI Assistant
 AGENTS.md
 docs
