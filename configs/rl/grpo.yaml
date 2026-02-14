@@ -43,19 +43,28 @@ lora_target_modules:
   - up_proj
   - down_proj
 
-# Reward config defaults (override per-sample via reward_config dict if needed).
-beta: 0.2
-delta: 0.5
-kappa: 10.0
-c: 0.5
-stage_penalty: 0.4
-delta_rep: 0.1
-rep_window: 5
-k2: 4.0
-c2: 0.0
-max_depth: 5
-bonus_depth: 0.0
-bonus_progress: 0.0
-bonus_progress_min: 0
-penalty_empty_user: 0.0
-penalty_early_terminate: 0.0
+reward:
+  beta: 0.2
+  delta: 0.5
+  kappa: 10.0
+  c: 0.5
+  stage_penalty: 0.4
+  delta_rep: 0.1
+  rep_window: 5
+  k2: 4.0
+  c2: 0.0
+  max_depth: 5
+  bonus_depth: 0.0
+  bonus_progress: 0.0
+  bonus_progress_min: 0
+  penalty_empty_user: 0.0
+  penalty_early_terminate: 0.0
+
+# vLLM config (required for rollout_func metadata forwarding)
+use_vllm: true
+vllm_mode: colocate
+# vllm_gpu_memory_utilization: 0.85
+# vllm_max_model_length: 4096
+# vllm_tensor_parallel_size: 1
+# vllm_host: 127.0.0.1
+# vllm_port: 8000

@@ -1,15 +1,4 @@
-"""Reward computation for multi-turn iceberg dialogue RL.
-
-TODO(TRL-0.27.1 rollout metadata):
-- TRL 0.27.1 only invokes rollout_func in vLLM modes ("server"/"colocate").
-- The non-vLLM transformers.generate path hardcodes extra_fields = {},
-  so reward_funcs do NOT receive rollout metadata (layer_history/num_user_turns).
-- Our rollout_func is therefore unused unless vLLM is enabled or TRL is patched.
-- Future fixes:
-  - enable vLLM once the NPU/vLLM stack is usable, OR
-  - patch TRL _generate() to call rollout_func in non-vLLM mode, OR
-  - re-enable kwargs-based metadata plumbing once extra_fields can be forwarded.
-"""
+"""Reward computation for multi-turn iceberg dialogue RL."""
 
 from __future__ import annotations
 
@@ -107,6 +96,18 @@ def compute_episode_reward(
     return float(r_episode)
 
 
+def _build_reward_cfg(default_cfg: RewardConfig, override: Optional[Dict[str, Any]]) -> RewardConfig:
+    cfg = RewardConfig()
+    for key, value in default_cfg.__dict__.items():
+        if hasattr(cfg, key):
+            setattr(cfg, key, value)
+    if override:
+        for key, value in override.items():
+            if hasattr(cfg, key):
+                setattr(cfg, key, value)
+    return cfg
+
+
 def trl_reward_func(
     prompts,
     completions,
@@ -118,10 +119,9 @@ def trl_reward_func(
     num_user_turns_batch = kwargs.get("num_user_turns")
     terminate_reason_batch = kwargs.get("terminate_reason")
     reward_config_batch = kwargs.get("reward_config")
+    reward_defaults_batch = kwargs.get("reward_defaults")
 
     if layer_history_batch is None or num_user_turns_batch is None:
-        # TODO(TRL-0.27.1): rollout metadata not available on non-vLLM path.
-        # Return neutral rewards so training can proceed without crashing.
         return [0.0 for _ in completions]
 
     if len(layer_history_batch) != len(num_user_turns_batch) or len(layer_history_batch) != len(
@@ -138,15 +138,20 @@ def trl_reward_func(
     for idx, (layer_history, num_user_turns) in enumerate(
         zip(layer_history_batch, num_user_turns_batch)
     ):
-        cfg = RewardConfig()
+        defaults = RewardConfig()
+        if reward_defaults_batch and idx < len(reward_defaults_batch):
+            defaults = _build_reward_cfg(defaults, reward_defaults_batch[idx])
+
+        overrides = None
         if reward_config_batch and idx < len(reward_config_batch):
-            overrides = reward_config_batch[idx] or {}
-            for key, value in overrides.items():
-                if hasattr(cfg, key):
-                    setattr(cfg, key, value)
+            overrides = reward_config_batch[idx]
+
+        cfg = _build_reward_cfg(defaults, overrides)
+
         terminate_reason = None
         if terminate_reason_batch and idx < len(terminate_reason_batch):
             terminate_reason = terminate_reason_batch[idx]
+
         reward = compute_episode_reward(
             layer_history=layer_history,
             num_user_turns=int(num_user_turns),

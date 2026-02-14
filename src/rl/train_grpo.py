@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List
 
 import torch
+import os
 from datasets import load_dataset
 from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -18,7 +16,7 @@ from trl import GRPOConfig, GRPOTrainer
 from src.models.infer_user_agent import load_user_agent
 from src.rl.grpo_rollout import RolloutConfig, run_episode
 from src.models.iceberg_classifier import IcebergClassifier
-from src.rl.reward_fn import trl_reward_func
+from src.rl.reward_fn import RewardConfig, trl_reward_func
 
 
 @dataclass
@@ -28,6 +26,7 @@ class TrainConfig:
     user_agent_adapter_dir: str
     classifier_checkpoint_dir: str
     dataset_path: str
+    reward: Dict[str, Any] = None
     max_turns: int = 8
     user_max_new_tokens: int = 128
     user_temperature: float = 0.7
@@ -38,6 +37,13 @@ class TrainConfig:
     main_top_p: float = 0.9
     main_do_sample: bool = True
     num_generations: int = 4
+    use_vllm: bool = True
+    vllm_mode: str = "colocate"
+    vllm_gpu_memory_utilization: float | None = None
+    vllm_max_model_length: int | None = None
+    vllm_tensor_parallel_size: int | None = None
+    vllm_host: str | None = None
+    vllm_port: int | None = None
     per_device_train_batch_size: int = 1
     gradient_accumulation_steps: int = 1
     learning_rate: float = 5e-6
@@ -87,16 +93,15 @@ def _build_train_config(config_path: str) -> TrainConfig:
         ]
     if cfg.report_to is None:
         cfg.report_to = ["wandb"]
+    if cfg.reward is None:
+        cfg.reward = {}
     return cfg
 
 
 def _rollout_func(prompts, trainer, **kwargs):
-    # TODO(TRL-0.27.1): This rollout_func is only used in vLLM modes ("server"/"colocate").
-    # The non-vLLM transformers.generate path hardcodes extra_fields = {} and bypasses
-    # rollout_func entirely, so reward_funcs will not receive rollout metadata.
     main_model = trainer.model
     main_tokenizer = trainer.processing_class
-    user_bundle = trainer.user_agent_bundle
+    user_model, user_tokenizer, _ = trainer.user_agent_bundle
     classifier = trainer.classifier
     rollout_cfg = trainer.rollout_config
     num_generations = int(getattr(trainer.args, "num_generations", 1))
@@ -109,26 +114,27 @@ def _rollout_func(prompts, trainer, **kwargs):
         "terminate_reason": [],
         "num_user_turns": [],
         "reward_config": [],
+        "reward_defaults": [],
+        "dia_id": [],
     }
 
     for idx, prompt in enumerate(prompts):
-        meta = {}
-        if isinstance(prompt, dict):
-            meta = prompt
-            prompt_text = prompt.get("prompt", "")
-        else:
-            prompt_text = prompt
+        prompt_messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": str(prompt)}]
+        first_explanations = kwargs.get("first_explanation")
+        first_explanation = first_explanations[idx] if first_explanations is not None else ""
+        dia_ids = kwargs.get("dia_id")
+        dia_id = dia_ids[idx] if dia_ids is not None else None
 
         for _ in range(num_generations):
             episode = run_episode(
-                prompt=prompt_text,
-                first_explanation=meta.get("first_explanation", ""),
+                prompt_messages=prompt_messages,
+                first_explanation=first_explanation,
                 main_model=main_model,
                 main_tokenizer=main_tokenizer,
-                user_agent_bundle=user_bundle,
+                user_model=user_model,
+                user_tokenizer=user_tokenizer,
                 classifier=classifier,
                 cfg=rollout_cfg,
-                reward_config=meta.get("reward_config"),
             )
             results["prompt_ids"].append(episode.get("prompt_ids", []))
             results["completion_ids"].append(episode.get("completion_ids", []))
@@ -136,7 +142,9 @@ def _rollout_func(prompts, trainer, **kwargs):
             results["layer_history"].append(episode.get("layer_history", []))
             results["terminate_reason"].append(episode.get("terminate_reason", ""))
             results["num_user_turns"].append(episode.get("num_user_turns", 0))
-            results["reward_config"].append(episode.get("reward_config", {}))
+            results["reward_config"].append({})
+            results["reward_defaults"].append(trainer.reward_defaults.__dict__)
+            results["dia_id"].append(dia_id)
 
     expected = len(prompts) * num_generations
     assert len(results["completion_ids"]) == expected
@@ -189,7 +197,19 @@ def main() -> None:
         disable_tqdm=cfg.disable_tqdm,
         log_level=cfg.log_level,
         remove_unused_columns=False,
+        use_vllm=cfg.use_vllm,
+        vllm_mode=cfg.vllm_mode,
+        vllm_gpu_memory_utilization=cfg.vllm_gpu_memory_utilization,
+        vllm_max_model_length=cfg.vllm_max_model_length,
+        vllm_tensor_parallel_size=cfg.vllm_tensor_parallel_size,
+        vllm_host=cfg.vllm_host,
+        vllm_port=cfg.vllm_port,
     )
+
+    base_reward_cfg = RewardConfig()
+    for key, value in cfg.reward.items():
+        if hasattr(base_reward_cfg, key):
+            setattr(base_reward_cfg, key, value)
 
     trainer = GRPOTrainer(
         model=model,
@@ -202,8 +222,6 @@ def main() -> None:
     )
 
     if cfg.wandb_project:
-        import os
-
         os.environ.setdefault("WANDB_PROJECT", cfg.wandb_project)
 
     trainer.user_agent_bundle = load_user_agent(
@@ -228,6 +246,7 @@ def main() -> None:
         main_top_p=cfg.main_top_p,
         main_do_sample=cfg.main_do_sample,
     )
+    trainer.reward_defaults = base_reward_cfg
 
     trainer.train()
 
