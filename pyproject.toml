@@ -16,8 +16,6 @@ cls = [
     "pyyaml>=6.0.3",
     "rich>=14.3.1",
     "scikit-learn>=1.7.2",
-    "torch-npu==2.5.1",
-    "torch==2.5.1",
     "tqdm>=4.67.1",
     "transformers==4.56.2",
 ]
@@ -33,8 +31,6 @@ rl = [
     "setuptools<81",
     "numpy<2.0",
     "tokenizers==0.22.2",
-    "torch==2.5.1",
-    "torch-npu==2.5.1",
     "wandb>=0.24.1",
 ]
 dev = [

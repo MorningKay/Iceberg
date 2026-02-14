@@ -414,8 +414,6 @@ cls = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "scikit-learn" },
-    { name = "torch" },
-    { name = "torch-npu" },
     { name = "tqdm" },
     { name = "transformers" },
 ]
@@ -432,8 +430,6 @@ rl = [
     { name = "rich" },
     { name = "setuptools" },
     { name = "tokenizers" },
-    { name = "torch" },
-    { name = "torch-npu" },
     { name = "tqdm" },
     { name = "transformers" },
     { name = "trl" },
@@ -452,8 +448,6 @@ cls = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=14.3.1" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
-    { name = "torch", specifier = "==2.5.1" },
-    { name = "torch-npu", specifier = "==2.5.1" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "transformers", specifier = "==4.56.2" },
 ]
@@ -470,8 +464,6 @@ rl = [
     { name = "rich", specifier = ">=14.3.1" },
     { name = "setuptools", specifier = "<81" },
     { name = "tokenizers", specifier = "==0.22.2" },
-    { name = "torch", specifier = "==2.5.1" },
-    { name = "torch-npu", specifier = "==2.5.1" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "transformers", specifier = "==4.56.2" },
     { name = "trl", specifier = "==0.27.1" },
@@ -1273,18 +1265,6 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/69/f0/46e74e0d145f43fa506cb336eaefb2d240547e4ce1f496e442711093ab25/torch-2.5.1-cp310-cp310-manylinux2014_aarch64.whl", hash = "sha256:34bfa1a852e5714cbfa17f27c49d8ce35e1b7af5608c4bc6e81392c352dbc601", size = 91919522, upload-time = "2024-10-29T17:39:08.74Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/a5/13/1eb674c8efbd04d71e4a157ceba991904f633e009a584dd65dccbafbb648/torch-2.5.1-cp310-cp310-win_amd64.whl", hash = "sha256:32a037bd98a241df6c93e4c789b683335da76a2ac142c0973675b715102dc5fa", size = 203088048, upload-time = "2024-10-29T17:34:10.913Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/a9/9d/e0860474ee0ff8f6ef2c50ec8f71a250f38d78a9b9df9fd241ad3397a65b/torch-2.5.1-cp310-none-macosx_11_0_arm64.whl", hash = "sha256:23d062bf70776a3d04dbe74db950db2a5245e1ba4f27208a87f0d743b0d06e86", size = 63877046, upload-time = "2024-10-29T17:34:19.174Z" },
-]
-
-[[package]]
-name = "torch-npu"
-version = "2.5.1"
-source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
-dependencies = [
-    { name = "torch" },
-]
-wheels = [
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/85/6f/a30205d938bb096b9caa33c939d3268f829502bafd99b290107196f9a036/torch_npu-2.5.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f591ad92e650debb6e3cf482ed8188d14849bf8925d7f5417db4b7949d4f7167", size = 14029949, upload-time = "2025-04-25T10:18:31.145Z" },
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/49/8d/1d4ff137afc3240742f28b83c88e71ff90f98fe0c05f859a9559ede983cb/torch_npu-2.5.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:54b779aad4754db3e7206847b370672243b8f7a249c5894d0f8192abad7e0b23", size = 16089725, upload-time = "2025-04-25T10:18:35.366Z" },
 ]
 
 [[package]]
