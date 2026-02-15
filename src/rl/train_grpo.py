@@ -17,6 +17,8 @@ from src.models.infer_user_agent import load_user_agent
 from src.rl.grpo_rollout import RolloutConfig, run_episode
 from src.models.iceberg_classifier import IcebergClassifier
 from src.rl.reward_fn import RewardConfig, trl_reward_func
+from src.serving.vllm_client import VLLMChatClient
+from src.serving.user_agent_client import UserAgentClient
 
 
 @dataclass
@@ -26,7 +28,13 @@ class TrainConfig:
     user_agent_adapter_dir: str
     classifier_checkpoint_dir: str
     dataset_path: str
+    output_dir: str
     reward: Dict[str, Any] = None
+    assistant_server_host: str = "127.0.0.1"
+    assistant_server_port: int = 9101
+    assistant_server_model: str | None = None
+    user_server_host: str = "127.0.0.1"
+    user_server_port: int = 9202
     max_turns: int = 8
     user_max_new_tokens: int = 128
     user_temperature: float = 0.7
@@ -38,12 +46,17 @@ class TrainConfig:
     main_do_sample: bool = True
     num_generations: int = 4
     use_vllm: bool = True
-    vllm_mode: str = "colocate"
+    vllm_mode: str = "server"
+    vllm_server_host: str = "127.0.0.1"
+    vllm_server_port: int = 9101
     vllm_gpu_memory_utilization: float | None = None
     vllm_max_model_length: int | None = None
     vllm_tensor_parallel_size: int | None = None
-    vllm_host: str | None = None
-    vllm_port: int | None = None
+    assistant_server_host: str = "127.0.0.1"
+    assistant_server_port: int = 9101
+    assistant_server_model: str | None = None
+    user_server_host: str = "127.0.0.1"
+    user_server_port: int = 9202
     per_device_train_batch_size: int = 1
     gradient_accumulation_steps: int = 1
     learning_rate: float = 5e-6
@@ -77,6 +90,7 @@ def _build_train_config(config_path: str) -> TrainConfig:
         user_agent_adapter_dir=data["user_agent_adapter_dir"],
         classifier_checkpoint_dir=data["classifier_checkpoint_dir"],
         dataset_path=data["dataset_path"],
+        output_dir=data.get("output_dir", "outputs/grpo"),
     )
     for key, value in data.items():
         if hasattr(cfg, key):
@@ -135,6 +149,8 @@ def _rollout_func(prompts, trainer, **kwargs):
                 user_tokenizer=user_tokenizer,
                 classifier=classifier,
                 cfg=rollout_cfg,
+                assistant_client=trainer.assistant_client,
+                user_client=trainer.user_client,
             )
             results["prompt_ids"].append(episode.get("prompt_ids", []))
             results["completion_ids"].append(episode.get("completion_ids", []))
@@ -199,11 +215,11 @@ def main() -> None:
         remove_unused_columns=False,
         use_vllm=cfg.use_vllm,
         vllm_mode=cfg.vllm_mode,
+        vllm_server_host=cfg.vllm_server_host,
+        vllm_server_port=cfg.vllm_server_port,
         vllm_gpu_memory_utilization=cfg.vllm_gpu_memory_utilization,
         vllm_max_model_length=cfg.vllm_max_model_length,
         vllm_tensor_parallel_size=cfg.vllm_tensor_parallel_size,
-        vllm_host=cfg.vllm_host,
-        vllm_port=cfg.vllm_port,
     )
 
     base_reward_cfg = RewardConfig()
@@ -235,6 +251,18 @@ def main() -> None:
         device="auto",
         local_files_only=True,
     )
+
+    assistant_server_host = cfg.__dict__.get("assistant_server_host", "127.0.0.1")
+    assistant_server_port = cfg.__dict__.get("assistant_server_port", 9101)
+    assistant_server_model = cfg.__dict__.get("assistant_server_model", cfg.model_name_or_path)
+    trainer.assistant_client = VLLMChatClient(
+        base_url=f"http://{assistant_server_host}:{assistant_server_port}",
+        model=assistant_server_model,
+    )
+
+    user_server_host = cfg.__dict__.get("user_server_host", "127.0.0.1")
+    user_server_port = cfg.__dict__.get("user_server_port", 9202)
+    trainer.user_client = UserAgentClient(base_url=f"http://{user_server_host}:{user_server_port}")
     trainer.rollout_config = RolloutConfig(
         max_turns=cfg.max_turns,
         user_max_new_tokens=cfg.user_max_new_tokens,

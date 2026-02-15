@@ -62,9 +62,16 @@ reward:
 
 # vLLM config (required for rollout_func metadata forwarding)
 use_vllm: true
-vllm_mode: colocate
-# vllm_gpu_memory_utilization: 0.85
-# vllm_max_model_length: 4096
+vllm_mode: server
+vllm_server_host: 127.0.0.1
+vllm_server_port: 9101
+vllm_gpu_memory_utilization: 0.7
+vllm_max_model_length: 1024
 # vllm_tensor_parallel_size: 1
-# vllm_host: 127.0.0.1
-# vllm_port: 8000
+
+assistant_server_host: 127.0.0.1
+assistant_server_port: 9101
+# assistant_server_model: models/Qwen2.5-7B-Instruct
+
+user_server_host: 127.0.0.1
+user_server_port: 9202

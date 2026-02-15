@@ -191,6 +191,8 @@ def run_episode(
     user_tokenizer: AutoTokenizer,
     classifier: IcebergClassifier,
     cfg: RolloutConfig,
+    assistant_client=None,
+    user_client=None,
 ) -> Dict[str, Any]:
     _messages, system_msg, user_msg = _extract_prompt_messages(prompt_messages)
     system_msg = system_msg or S_MAIN
@@ -216,11 +218,25 @@ def run_episode(
     prompt_ids: Optional[List[int]] = None
 
     for t in range(1, cfg.max_turns + 1):
-        assistant_text, gen_ids, gen_logprobs, step_prompt_ids = _generate_main(
-            main_model, main_tokenizer, h_main, cfg
-        )
-        if prompt_ids is None:
-            prompt_ids = step_prompt_ids
+        if assistant_client is not None:
+            result = assistant_client.generate(
+                messages=h_main,
+                max_new_tokens=cfg.main_max_new_tokens,
+                temperature=cfg.main_temperature,
+                top_p=cfg.main_top_p,
+                logprobs=True,
+            )
+            assistant_text = (result.get("text") or "").strip()
+            gen_ids = result.get("token_ids") or []
+            gen_logprobs = result.get("token_logprobs") or []
+            if prompt_ids is None:
+                prompt_ids = _apply_chat_template(main_tokenizer, h_main)["input_ids"][0].tolist()
+        else:
+            assistant_text, gen_ids, gen_logprobs, step_prompt_ids = _generate_main(
+                main_model, main_tokenizer, h_main, cfg
+            )
+            if prompt_ids is None:
+                prompt_ids = step_prompt_ids
 
         h_main.append({"role": "assistant", "content": assistant_text})
         h_user.append({"role": "user", "content": assistant_text})
@@ -237,14 +253,23 @@ def run_episode(
 
         user_text = ""
         for _ in range(3):
-            user_text = _generate_user(user_model, user_tokenizer, h_user, cfg)
+            if user_client is not None:
+                resp = user_client.generate(h_user)
+                user_text = (resp.get("text") or "").strip()
+                layer = resp.get("layer")
+                label = resp.get("label")
+                conf = resp.get("confidence")
+            else:
+                user_text = _generate_user(user_model, user_tokenizer, h_user, cfg)
+                layer = label = conf = None
             if user_text:
                 break
         if not user_text:
             state.terminate_reason = "empty_next_user"
             break
 
-        layer, label, conf = classifier.predict(user_text)
+        if layer is None or label is None or conf is None:
+            layer, label, conf = classifier.predict(user_text)
         state.layer_history.append(
             {
                 "turn": len(state.layer_history) + 1,
