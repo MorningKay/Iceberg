@@ -20,10 +20,13 @@ mkdir -p "$RUN_DIR"
 LOG_FILE="$RUN_DIR/vllm_${PORT}.log"
 PID_FILE="$RUN_DIR/pid.txt"
 
-nohup vllm serve "$MODEL_PATH" \
+# NOTE: TRL's GRPO vLLM "server" integration expects the server started via
+# `trl vllm-serve` (not `vllm serve`).
+nohup trl vllm-serve \
+  --model "$MODEL_PATH" \
   --host "$HOST" \
   --port "$PORT" \
-  --tensor-parallel-size "$TP" \
+  --tensor_parallel_size "$TP" \
   > "$LOG_FILE" 2>&1 &
 
 PID=$!

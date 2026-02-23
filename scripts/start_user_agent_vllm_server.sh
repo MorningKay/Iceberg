@@ -23,10 +23,13 @@ SVC_LOG="$RUN_DIR/svc_vllm_${PORT}.log"
 VLLM_PID="$RUN_DIR/user_pid.txt"
 SVC_PID="$RUN_DIR/svc_pid.txt"
 
-nohup vllm serve "$MODEL_PATH" \
+# NOTE: TRL's GRPO vLLM "server" integration expects the server started via
+# `trl vllm-serve` (not `vllm serve`).
+nohup trl vllm-serve \
+  --model "$MODEL_PATH" \
   --host "$HOST" \
   --port "$PORT" \
-  --tensor-parallel-size "$TP" \
+  --tensor_parallel_size "$TP" \
   > "$VLLM_LOG" 2>&1 &
 
 VLLM_PID_VAL=$!
