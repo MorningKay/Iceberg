@@ -13,6 +13,7 @@ label_mapping.json is present, it must match the fixed Iceberg mapping.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -73,8 +74,9 @@ def _resolve_device(device: str) -> torch.device:
     if not hasattr(torch, "npu"):
         raise RuntimeError("torch.npu is not available in this environment")
 
-    torch.npu.set_device(0)
-    return torch.device("npu:0")
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    torch.npu.set_device(local_rank)
+    return torch.device(f"npu:{local_rank}")
 
 
 class IcebergClassifier:

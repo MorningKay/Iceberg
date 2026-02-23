@@ -9,7 +9,6 @@ import torch
 from transformers import AutoTokenizer
 
 from src.models.infer_user_agent import build_init_message
-from src.models.iceberg_classifier import IcebergClassifier
 
 S_MAIN = (
     "你是一名同理心对话代理。目标是在安全前提下，帮助来访者被理解与安顿情绪，并引导从外显到内在的逐级探索。"
@@ -187,9 +186,9 @@ def run_episode(
     first_explanation: str,
     main_model: torch.nn.Module,
     main_tokenizer: AutoTokenizer,
-    user_model: torch.nn.Module,
-    user_tokenizer: AutoTokenizer,
-    classifier: IcebergClassifier,
+    user_model: Optional[torch.nn.Module],
+    user_tokenizer: Optional[AutoTokenizer],
+    classifier: Optional[object],
     cfg: RolloutConfig,
     assistant_client=None,
     user_client=None,
@@ -208,7 +207,21 @@ def run_episode(
     ]
 
     state = RolloutState()
-    layer, label, conf = classifier.predict(user_msg)
+    if user_client is not None:
+        # Remote user-agent sidecar is responsible for classifier inference.
+        layer = label = conf = None
+    elif classifier is not None:
+        layer, label, conf = classifier.predict(user_msg)
+    else:
+        raise RuntimeError(
+            "Classifier is required when user_client is not provided. "
+            "Either pass user_client (recommended) or instantiate a local classifier."
+        )
+    if layer is None or label is None or conf is None:
+        # Seed user utterance must be classified for reward.
+        raise RuntimeError(
+            "Seed user utterance classification is missing. Ensure user-agent sidecar returns (layer,label,confidence)."
+        )
     state.layer_history.append(
         {"turn": 1, "layer": layer, "label": label, "confidence": conf}
     )
@@ -260,6 +273,10 @@ def run_episode(
                 label = resp.get("label")
                 conf = resp.get("confidence")
             else:
+                if user_model is None or user_tokenizer is None:
+                    raise RuntimeError(
+                        "Local user-agent generation requested but user_model/user_tokenizer is None."
+                    )
                 user_text = _generate_user(user_model, user_tokenizer, h_user, cfg)
                 layer = label = conf = None
             if user_text:
@@ -269,6 +286,10 @@ def run_episode(
             break
 
         if layer is None or label is None or conf is None:
+            if classifier is None:
+                raise RuntimeError(
+                    "Missing (layer,label,confidence) for user_text and no local classifier is available."
+                )
             layer, label, conf = classifier.predict(user_text)
         state.layer_history.append(
             {

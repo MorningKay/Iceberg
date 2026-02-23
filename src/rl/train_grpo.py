@@ -13,9 +13,7 @@ from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import GRPOConfig, GRPOTrainer
 
-from src.models.infer_user_agent import load_user_agent
 from src.rl.grpo_rollout import RolloutConfig, run_episode
-from src.models.iceberg_classifier import IcebergClassifier
 from src.rl.reward_fn import RewardConfig, trl_reward_func
 from src.serving.vllm_client import VLLMChatClient
 from src.serving.user_agent_client import UserAgentClient
@@ -69,6 +67,11 @@ class TrainConfig:
     disable_tqdm: bool = False
     log_level: str = "info"
     wandb_project: str = "Iceberg-GRPO"
+    use_remote_user_agent: bool = True
+    use_remote_classifier: bool = True
+    # If you ever enable local classifier/user-agent loading, they will run on the
+    # local rank device (see src/models/infer_user_agent.py). For distributed
+    # training, remote mode is strongly recommended.
     lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.05
@@ -115,8 +118,11 @@ def _build_train_config(config_path: str) -> TrainConfig:
 def _rollout_func(prompts, trainer, **kwargs):
     main_model = trainer.model
     main_tokenizer = trainer.processing_class
-    user_model, user_tokenizer, _ = trainer.user_agent_bundle
-    classifier = trainer.classifier
+    user_bundle = getattr(trainer, "user_agent_bundle", None)
+    user_model = user_tokenizer = None
+    if user_bundle is not None:
+        user_model, user_tokenizer, _ = user_bundle
+    classifier = getattr(trainer, "classifier", None)
     rollout_cfg = trainer.rollout_config
     num_generations = int(getattr(trainer.args, "num_generations", 1))
 
@@ -240,17 +246,30 @@ def main() -> None:
     if cfg.wandb_project:
         os.environ.setdefault("WANDB_PROJECT", cfg.wandb_project)
 
-    trainer.user_agent_bundle = load_user_agent(
-        cfg.user_agent_base_model,
-        cfg.user_agent_adapter_dir,
-        device="auto",
-        local_files_only=True,
-    )
-    trainer.classifier = IcebergClassifier(
-        cfg.classifier_checkpoint_dir,
-        device="auto",
-        local_files_only=True,
-    )
+    # IMPORTANT: In distributed training, never load extra models (user-agent/classifier)
+    # inside each rank. Use remote services by default.
+    if cfg.use_remote_user_agent:
+        trainer.user_agent_bundle = None
+    else:
+        from src.models.infer_user_agent import load_user_agent
+
+        trainer.user_agent_bundle = load_user_agent(
+            cfg.user_agent_base_model,
+            cfg.user_agent_adapter_dir,
+            device="auto",
+            local_files_only=True,
+        )
+
+    if cfg.use_remote_classifier:
+        trainer.classifier = None
+    else:
+        from src.models.iceberg_classifier import IcebergClassifier
+
+        trainer.classifier = IcebergClassifier(
+            cfg.classifier_checkpoint_dir,
+            device="auto",
+            local_files_only=True,
+        )
 
     assistant_server_host = cfg.__dict__.get("assistant_server_host", "127.0.0.1")
     assistant_server_port = cfg.__dict__.get("assistant_server_port", 9101)
@@ -263,6 +282,15 @@ def main() -> None:
     user_server_host = cfg.__dict__.get("user_server_host", "127.0.0.1")
     user_server_port = cfg.__dict__.get("user_server_port", 9202)
     trainer.user_client = UserAgentClient(base_url=f"http://{user_server_host}:{user_server_port}")
+    print(
+        f"[Iceberg GRPO] use_remote_user_agent={cfg.use_remote_user_agent} user_service=http://{user_server_host}:{user_server_port}"
+    )
+    print(
+        f"[Iceberg GRPO] use_remote_classifier={cfg.use_remote_classifier} (classifier via user-agent sidecar when remote)"
+    )
+    print(
+        f"[Iceberg GRPO] assistant_service=http://{assistant_server_host}:{assistant_server_port}"
+    )
     trainer.rollout_config = RolloutConfig(
         max_turns=cfg.max_turns,
         user_max_new_tokens=cfg.user_max_new_tokens,

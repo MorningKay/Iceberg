@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -86,8 +87,9 @@ def load_user_agent(
             ) from exc
         if not hasattr(torch, "npu"):
             raise RuntimeError("torch.npu is not available in this environment")
-        torch.npu.set_device(0)
-        model.to("npu:0")
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        torch.npu.set_device(local_rank)
+        model.to(f"npu:{local_rank}")
     else:
         model.to("cpu")
 

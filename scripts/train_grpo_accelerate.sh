@@ -6,6 +6,7 @@ CONFIG_YAML="$1"
 NUM_PROCESSES="${2:-4}"
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+OUTPUT_BASE="outputs/grpo"
 RUN_DIR="$OUTPUT_BASE/$TIMESTAMP"
 mkdir -p "$RUN_DIR"
 
