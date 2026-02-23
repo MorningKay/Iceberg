@@ -20,7 +20,7 @@ if [ -z "$CONFIG_YAML" ]; then
 fi
 
 nohup uv run accelerate launch --num_processes "$NUM_PROCESSES" \
-  src/rl/train_grpo.py --config "$CONFIG_YAML" \
+  -m src.rl.train_grpo --config "$CONFIG_YAML" \
   > "$LOG_FILE" 2>&1 &
 
 PID=$!
