@@ -13,6 +13,27 @@ from src.serving.vllm_client import VLLMChatClient
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
+        if self.path == "/classify":
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length).decode("utf-8")
+            payload = json.loads(body)
+            text = payload.get("text", "")
+
+            layer, label, confidence = self.server.classifier.predict(text)
+            resp = {
+                "layer": layer,
+                "label": label,
+                "confidence": confidence,
+            }
+
+            resp_bytes = json.dumps(resp).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp_bytes)))
+            self.end_headers()
+            self.wfile.write(resp_bytes)
+            return
+
         if self.path != "/generate":
             self.send_response(404)
             self.end_headers()

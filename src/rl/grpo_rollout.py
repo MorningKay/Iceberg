@@ -199,19 +199,19 @@ def run_episode(
 
     state = RolloutState()
     if user_client is not None:
-        # Remote user-agent sidecar is responsible for classifier inference.
-        layer = label = conf = None
+        resp = user_client.classify(user_msg)
+        layer = resp.get("layer")
+        label = resp.get("label")
+        conf = resp.get("confidence")
     elif classifier is not None:
         layer, label, conf = classifier.predict(user_msg)
     else:
         raise RuntimeError(
-            "Classifier is required when user_client is not provided. "
-            "Either pass user_client (recommended) or instantiate a local classifier."
+            "Seed classification requires either user_client (preferred) or a local classifier."
         )
     if layer is None or label is None or conf is None:
-        # Seed user utterance must be classified for reward.
         raise RuntimeError(
-            "Seed user utterance classification is missing. Ensure user-agent sidecar returns (layer,label,confidence)."
+            "Seed user utterance classification is missing. Ensure /classify returns {layer,label,confidence}."
         )
     state.layer_history.append(
         {"turn": 1, "layer": layer, "label": label, "confidence": conf}
