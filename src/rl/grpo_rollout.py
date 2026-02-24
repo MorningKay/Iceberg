@@ -159,26 +159,17 @@ def _generate_user(
     return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
 
-def _extract_prompt_messages(prompt: Any) -> Tuple[List[Dict[str, str]], str, str]:
-    if isinstance(prompt, list):
-        messages = [
-            {"role": m.get("role", ""), "content": m.get("content", "")}
-            for m in prompt
-            if isinstance(m, dict)
-        ]
-    else:
-        messages = [{"role": "user", "content": str(prompt)}]
-
-    system_msg = ""
-    user_msg = ""
-    for msg in messages:
-        if msg.get("role") == "system" and not system_msg:
-            system_msg = msg.get("content", "")
-        if msg.get("role") == "user":
-            user_msg = msg.get("content", "")
-    if not user_msg:
-        user_msg = messages[-1].get("content", "") if messages else ""
-    return messages, system_msg, user_msg
+def _extract_prompt_messages(messages: List[Dict[str, str]]) -> Tuple[str, str]:
+    system_msg = None
+    last_user = None
+    for m in messages:
+        if m["role"] == "system":
+            system_msg = m["content"]
+        elif m["role"] == "user":
+            last_user = m["content"]
+    if last_user is None:
+        raise ValueError("No user message found in parsed prompt.")
+    return system_msg, last_user
 
 
 def run_episode(
@@ -193,7 +184,7 @@ def run_episode(
     assistant_client=None,
     user_client=None,
 ) -> Dict[str, Any]:
-    _messages, system_msg, user_msg = _extract_prompt_messages(prompt_messages)
+    system_msg, user_msg = _extract_prompt_messages(prompt_messages)
     system_msg = system_msg or S_MAIN
 
     h_main = [

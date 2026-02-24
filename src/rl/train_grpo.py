@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import os
+import re
 from datasets import load_dataset
 from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -17,6 +18,12 @@ from src.rl.grpo_rollout import RolloutConfig, run_episode
 from src.rl.reward_fn import RewardConfig, trl_reward_func
 from src.serving.vllm_client import VLLMChatClient
 from src.serving.user_agent_client import UserAgentClient
+
+
+_CHAT_BLOCK_RE = re.compile(
+    r"<\|im_start\|>(system|user|assistant)\n(.*?)<\|im_end\|>",
+    flags=re.DOTALL,
+)
 
 
 @dataclass
@@ -85,6 +92,18 @@ def _load_yaml(path: str) -> Dict[str, Any]:
         return yaml.safe_load(handle) or {}
 
 
+def parse_im_chatml(prompt_text: str) -> List[Dict[str, str]]:
+    # Drop trailing generation prompt marker if present
+    tail = "<|im_start|>assistant\n"
+    if prompt_text.endswith(tail):
+        prompt_text = prompt_text[: -len(tail)]
+
+    msgs: List[Dict[str, str]] = []
+    for role, content in _CHAT_BLOCK_RE.findall(prompt_text):
+        msgs.append({"role": role, "content": content.strip()})
+    return msgs
+
+
 def _build_train_config(config_path: str) -> TrainConfig:
     data = _load_yaml(config_path)
     cfg = TrainConfig(
@@ -139,7 +158,7 @@ def _rollout_func(prompts, trainer, **kwargs):
     }
 
     for idx, prompt in enumerate(prompts):
-        prompt_messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": str(prompt)}]
+        prompt_messages = parse_im_chatml(str(prompt))
         first_explanations = kwargs.get("first_explanation")
         first_explanation = first_explanations[idx] if first_explanations is not None else ""
         dia_ids = kwargs.get("dia_id")
