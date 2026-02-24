@@ -61,8 +61,14 @@ if ! kill -0 "$SVC_PID_VAL" 2>/dev/null; then
 fi
 
 echo "Started user-agent vLLM server."
-echo "vLLM PID: $VLLM_PID_VAL"
 echo "vLLM Log: $VLLM_LOG"
-echo "User-agent service PID: $SVC_PID_VAL"
+echo "vLLM Tail: tail -n 50 -f $VLLM_LOG"
+echo "vLLM Stop: kill $VLLM_PID_VAL"
+
+echo "User-agent service"
 echo "Service Log: $SVC_LOG"
+echo "Service tail: tail -n 50 -f $SVC_LOG"
+echo "Service Stop: kill $SVC_PID_VAL"
 echo "Service URL: http://$HOST:$SVC_PORT"
+
+echo "RUN_DIR: $RUN_DIR"
