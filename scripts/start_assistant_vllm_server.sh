@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage: start_assistant_vllm_server.sh <MODEL_PATH> [HOST] [PORT] [TP]
-MODEL_PATH="$1"
+MODEL_PATH="${1:-}"
 HOST="${2:-0.0.0.0}"
 PORT="${3:-9101}"
 TP="${4:-2}"
@@ -18,11 +18,11 @@ RUN_DIR="$OUTPUT_BASE/$TIMESTAMP"
 mkdir -p "$RUN_DIR"
 
 LOG_FILE="$RUN_DIR/vllm_${PORT}.log"
-PID_FILE="$RUN_DIR/pid.txt"
+PGID_FILE="$RUN_DIR/pgid.txt"
 
 # NOTE: TRL's GRPO vLLM "server" integration expects the server started via
 # `trl vllm-serve` (not `vllm serve`).
-nohup trl vllm-serve \
+setsid trl vllm-serve \
   --model "$MODEL_PATH" \
   --host "$HOST" \
   --port "$PORT" \
@@ -30,7 +30,8 @@ nohup trl vllm-serve \
   > "$LOG_FILE" 2>&1 &
 
 PID=$!
-printf "%s\n" "$PID" > "$PID_FILE"
+PGID="$(ps -o pgid= -p "$PID" | tr -d ' ')"
+printf "%s\n" "$PGID" > "$PGID_FILE"
 
 sleep 1
 if ! kill -0 "$PID" 2>/dev/null; then
@@ -42,5 +43,5 @@ echo "Started assistant vLLM server."
 echo "PID: $PID"
 echo "Log: $LOG_FILE"
 echo "Tail: tail -n 50 -f $LOG_FILE"
-echo "Stop: kill $(cat $PID_FILE)"
+echo "Stop: kill -TERM -- -$PGID"
 echo "RUN_DIR: $RUN_DIR"

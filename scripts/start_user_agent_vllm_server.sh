@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Usage: start_user_agent_vllm_server.sh <MODEL_PATH> <CLASSIFIER_DIR> [HOST] [PORT] [TP]
-MODEL_PATH="$1"
-CLASSIFIER_DIR="$2"
+MODEL_PATH="${1:-}"
+CLASSIFIER_DIR="${2:-}"
 HOST="${3:-0.0.0.0}"
 PORT="${4:-9102}"
 TP="${5:-2}"
@@ -20,20 +20,21 @@ mkdir -p "$RUN_DIR"
 
 VLLM_LOG="$RUN_DIR/user_vllm_${PORT}.log"
 SVC_LOG="$RUN_DIR/svc_vllm_${PORT}.log"
-VLLM_PID="$RUN_DIR/user_pid.txt"
-SVC_PID="$RUN_DIR/svc_pid.txt"
+VLLM_PGID="$RUN_DIR/user_pgid.txt"
+SVC_PGID="$RUN_DIR/svc_pgid.txt"
 
 # NOTE:
 # - Assistant-side server MUST use `trl vllm-serve` (TRL weight sync / communicator).
 # - User-agent side uses OpenAI-compatible `vllm serve` (simple chat/completions API).
-nohup vllm serve "$MODEL_PATH" \
+setsid vllm serve "$MODEL_PATH" \
   --host "$HOST" \
   --port "$PORT" \
   --tensor-parallel-size "$TP" \
   > "$VLLM_LOG" 2>&1 &
 
 VLLM_PID_VAL=$!
-printf "%s\n" "$VLLM_PID_VAL" > "$VLLM_PID"
+VLLM_PGID_VAL="$(ps -o pgid= -p "$VLLM_PID_VAL" | tr -d ' ')"
+printf "%s\n" "$VLLM_PGID_VAL" > "$VLLM_PGID"
 
 sleep 1
 if ! kill -0 "$VLLM_PID_VAL" 2>/dev/null; then
@@ -43,7 +44,7 @@ fi
 
 # Sidecar classifier + user agent proxy on same host, different port.
 SVC_PORT=$((PORT + 100))
-nohup uv run python -m src.serving.user_agent_server \
+setsid uv run python -m src.serving.user_agent_server \
   --host "$HOST" \
   --port "$SVC_PORT" \
   --vllm_url "http://$HOST:$PORT" \
@@ -52,7 +53,8 @@ nohup uv run python -m src.serving.user_agent_server \
   > "$SVC_LOG" 2>&1 &
 
 SVC_PID_VAL=$!
-printf "%s\n" "$SVC_PID_VAL" > "$SVC_PID"
+SVC_PGID_VAL="$(ps -o pgid= -p "$SVC_PID_VAL" | tr -d ' ')"
+printf "%s\n" "$SVC_PGID_VAL" > "$SVC_PGID"
 
 sleep 1
 if ! kill -0 "$SVC_PID_VAL" 2>/dev/null; then
@@ -63,12 +65,12 @@ fi
 echo "Started user-agent vLLM server."
 echo "vLLM Log: $VLLM_LOG"
 echo "vLLM Tail: tail -n 50 -f $VLLM_LOG"
-echo "vLLM Stop: kill $VLLM_PID_VAL"
+echo "vLLM Stop: kill -TERM -- -$VLLM_PGID_VAL"
 
 echo "User-agent service"
 echo "Service Log: $SVC_LOG"
 echo "Service tail: tail -n 50 -f $SVC_LOG"
-echo "Service Stop: kill $SVC_PID_VAL"
+echo "Service Stop: kill -TERM -- -$SVC_PGID_VAL"
 echo "Service URL: http://$HOST:$SVC_PORT"
 
 echo "RUN_DIR: $RUN_DIR"
