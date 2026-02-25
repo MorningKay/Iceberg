@@ -50,12 +50,25 @@ def _device_from_model(model: torch.nn.Module) -> torch.device:
     return next(model.parameters()).device
 
 
-def _apply_chat_template(tokenizer, messages: List[Dict[str, str]]):
+def _apply_chat_template(
+    tokenizer,
+    messages: List[Dict[str, str]],
+    *,
+    tokenize: bool = True,
+    add_generation_prompt: bool = True,
+):
+    if tokenize:
+        return tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=add_generation_prompt,
+            return_tensors="pt",
+        )
     return tokenizer.apply_chat_template(
         messages,
-        tokenize=True,
-        add_generation_prompt=True,
-        return_tensors="pt",
+        tokenize=False,
+        add_generation_prompt=add_generation_prompt,
+        return_tensors=None,
     )
 
 
@@ -229,6 +242,7 @@ def run_episode(
                 temperature=cfg.main_temperature,
                 top_p=cfg.main_top_p,
                 logprobs=True,
+                main_model=main_model,
             )
             assistant_text = (result.get("text") or "").strip()
             gen_ids = result.get("token_ids") or []

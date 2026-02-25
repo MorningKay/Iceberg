@@ -16,7 +16,7 @@ from trl import GRPOConfig, GRPOTrainer
 
 from src.rl.grpo_rollout import RolloutConfig, run_episode
 from src.rl.reward_fn import RewardConfig, trl_reward_func
-from src.serving.vllm_client import VLLMChatClient
+from src.serving.vllm_client import VLLMChatClient, TRLVLLMServeClient
 from src.serving.user_agent_client import UserAgentClient
 
 
@@ -292,10 +292,9 @@ def main() -> None:
 
     assistant_server_host = cfg.__dict__.get("assistant_server_host", "127.0.0.1")
     assistant_server_port = cfg.__dict__.get("assistant_server_port", 9101)
-    assistant_server_model = cfg.__dict__.get("assistant_server_model", cfg.model_name_or_path)
-    trainer.assistant_client = VLLMChatClient(
+    trainer.assistant_client = TRLVLLMServeClient(
         base_url=f"http://{assistant_server_host}:{assistant_server_port}",
-        model=assistant_server_model,
+        tokenizer=tokenizer,
     )
 
     user_server_host = cfg.__dict__.get("user_server_host", "127.0.0.1")

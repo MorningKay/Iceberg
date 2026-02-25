@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
+from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List
 
@@ -13,7 +15,8 @@ from src.serving.vllm_client import VLLMChatClient
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path == "/classify":
+        path = urlparse(self.path).path
+        if path == "/classify":
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length).decode("utf-8")
             payload = json.loads(body)
@@ -34,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(resp_bytes)
             return
 
-        if self.path != "/generate":
+        if path != "/generate":
             self.send_response(404)
             self.end_headers()
             return
@@ -44,13 +47,20 @@ class Handler(BaseHTTPRequestHandler):
         payload = json.loads(body)
         messages = payload.get("messages", [])
 
-        result = self.server.vllm.generate(
-            messages=messages,
-            max_new_tokens=self.server.max_new_tokens,
-            temperature=self.server.temperature,
-            top_p=self.server.top_p,
-            logprobs=False,
-        )
+        for attempt in range(3):
+            try:
+                result = self.server.vllm.generate(
+                    messages=messages,
+                    max_new_tokens=self.server.max_new_tokens,
+                    temperature=self.server.temperature,
+                    top_p=self.server.top_p,
+                    logprobs=False,
+                )
+                break
+            except Exception as e:
+                print(f"[sidecar] vLLM failed ({attempt+1}/3): {e}")
+                time.sleep(0.5 * (attempt + 1))
+
         user_text = (result.get("text") or "").strip()
 
         layer, label, confidence = self.server.classifier.predict(user_text)
