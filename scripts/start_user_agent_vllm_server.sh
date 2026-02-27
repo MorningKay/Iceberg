@@ -43,11 +43,12 @@ if ! kill -0 "$VLLM_PID_VAL" 2>/dev/null; then
 fi
 
 # Sidecar classifier + user agent proxy on same host, different port.
+CLIENT_HOST="${CLIENT_HOST:-127.0.0.1}"
 SVC_PORT=$((PORT + 100))
 setsid uv run python -m src.serving.user_agent_server \
-  --host "$HOST" \
+  --host "$CLIENT_HOST" \
   --port "$SVC_PORT" \
-  --vllm_url "http://$HOST:$PORT" \
+  --vllm_url "http://$CLIENT_HOST:$PORT" \
   --vllm_model "$MODEL_PATH" \
   --classifier_dir "$CLASSIFIER_DIR" \
   > "$SVC_LOG" 2>&1 &
@@ -71,6 +72,9 @@ echo "User-agent service"
 echo "Service Log: $SVC_LOG"
 echo "Service tail: tail -n 50 -f $SVC_LOG"
 echo "Service Stop: kill -TERM -- -$SVC_PGID_VAL"
-echo "Service URL: http://$HOST:$SVC_PORT"
+
+echo "[user] vLLM bind:  http://$HOST:$PORT"
+echo "[user] vLLM url:   http://$CLIENT_HOST:$PORT"
+echo "[user] sidecar:    http://$CLIENT_HOST:$((PORT+100))"
 
 echo "RUN_DIR: $RUN_DIR"
