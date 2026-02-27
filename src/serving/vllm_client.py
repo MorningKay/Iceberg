@@ -138,7 +138,7 @@ class TRLVLLMServeClient:
                 add_generation_prompt=True,
                 return_tensors="pt",
             )
-            prompt_ids = prompt_enc["input_ids"][0]
+            prompt_ids = prompt_enc[0]
             gen_ids = torch.tensor(token_ids, dtype=torch.long)
             input_ids = torch.cat([prompt_ids, gen_ids], dim=0).unsqueeze(0)
 

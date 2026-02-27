@@ -248,7 +248,7 @@ def run_episode(
             gen_ids = result.get("token_ids") or []
             gen_logprobs = result.get("token_logprobs") or []
             if prompt_ids is None:
-                prompt_ids = _apply_chat_template(main_tokenizer, h_main)["input_ids"][0].tolist()
+                prompt_ids = _apply_chat_template(main_tokenizer, h_main)[0].tolist()
         else:
             assistant_text, gen_ids, gen_logprobs, step_prompt_ids = _generate_main(
                 main_model, main_tokenizer, h_main, cfg
