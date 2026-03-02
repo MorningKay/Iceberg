@@ -21,7 +21,7 @@ if [ -z "$CONFIG_YAML" ]; then
 fi
 
 setsid uv run accelerate launch --num_processes "$NUM_PROCESSES" \
-  -m src.rl.train_grpo --config "$CONFIG_YAML" \
+  -m src.rl.train_grpo --config "$CONFIG_YAML" --output_dir "$RUN_DIR" \
   > "$LOG_FILE" 2>&1 &
 
 PID=$!
