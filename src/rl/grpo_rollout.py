@@ -230,9 +230,22 @@ def run_episode(
         {"turn": 1, "layer": layer, "label": label, "confidence": conf}
     )
 
+    # Initial assistant generation prefix (this is the fixed prompt for the whole trajectory).
+    prompt_enc = _apply_chat_template(
+        main_tokenizer, h_main, tokenize=True, add_generation_prompt=True
+    )
+    if torch.is_tensor(prompt_enc):
+        prompt_ids: List[int] = prompt_enc[0].detach().cpu().tolist()
+    elif isinstance(prompt_enc, dict):
+        prompt_ids = prompt_enc["input_ids"][0].detach().cpu().tolist()
+    else:
+        prompt_ids = list(prompt_enc)
+
     completion_ids: List[int] = []
+    assistant_token_mask: List[int] = []
     logprobs: List[float] = []
-    prompt_ids: Optional[List[int]] = None
+    # Optional debug metadata: offsets into completion_ids for each segment.
+    turn_offsets: List[Dict[str, Any]] = []
 
     for t in range(1, cfg.max_turns + 1):
         if assistant_client is not None:
@@ -247,20 +260,27 @@ def run_episode(
             assistant_text = (result.get("text") or "").strip()
             gen_ids = result.get("token_ids") or []
             gen_logprobs = result.get("token_logprobs") or []
-            if prompt_ids is None:
-                prompt_ids = _apply_chat_template(main_tokenizer, h_main)[0].tolist()
         else:
-            assistant_text, gen_ids, gen_logprobs, step_prompt_ids = _generate_main(
+            assistant_text, gen_ids, gen_logprobs, _step_prompt_ids = _generate_main(
                 main_model, main_tokenizer, h_main, cfg
             )
-            if prompt_ids is None:
-                prompt_ids = step_prompt_ids
+
+        if gen_logprobs is None or len(gen_logprobs) != len(gen_ids):
+            raise ValueError(
+                f"Assistant generation returned misaligned token ids/logprobs at turn {t}: "
+                f"len(token_ids)={len(gen_ids)} len(token_logprobs)={0 if gen_logprobs is None else len(gen_logprobs)}"
+            )
+
+        # Append assistant/policy tokens for this turn.
+        start = len(completion_ids)
+        completion_ids.extend(int(x) for x in gen_ids)
+        assistant_token_mask.extend([1] * len(gen_ids))
+        logprobs.extend(float(x) for x in gen_logprobs)
+        end = len(completion_ids)
+        turn_offsets.append({"turn": t, "kind": "assistant", "start": start, "end": end})
 
         h_main.append({"role": "assistant", "content": assistant_text})
         h_user.append({"role": "user", "content": assistant_text})
-
-        completion_ids.extend(gen_ids)
-        logprobs.extend(gen_logprobs)
 
         if t == cfg.max_turns:
             state.terminate_reason = "max_turns"
@@ -308,10 +328,70 @@ def run_episode(
         h_user.append({"role": "assistant", "content": user_text})
         state.num_user_turns += 1
 
+        # Append environment/user/template delta tokens so that:
+        #   input_ids == prompt_ids + completion_ids
+        # and completion_ids contains all post-prompt tokens across turns.
+        next_prompt_enc = _apply_chat_template(
+            main_tokenizer, h_main, tokenize=True, add_generation_prompt=True
+        )
+        if torch.is_tensor(next_prompt_enc):
+            next_prompt_ids: List[int] = next_prompt_enc[0].detach().cpu().tolist()
+        elif isinstance(next_prompt_enc, dict):
+            next_prompt_ids = next_prompt_enc["input_ids"][0].detach().cpu().tolist()
+        else:
+            next_prompt_ids = list(next_prompt_enc)
+
+        current_full_ids = prompt_ids + completion_ids
+        if next_prompt_ids[: len(current_full_ids)] != current_full_ids:
+            # Find first mismatch index for debugging.
+            mismatch = None
+            limit = min(len(current_full_ids), len(next_prompt_ids))
+            for j in range(limit):
+                if current_full_ids[j] != next_prompt_ids[j]:
+                    mismatch = j
+                    break
+            if mismatch is None and len(current_full_ids) > len(next_prompt_ids):
+                mismatch = len(next_prompt_ids)
+            if mismatch is None:
+                mismatch = 0
+            window = 10
+            a0 = max(0, mismatch - window)
+            a1 = mismatch + window
+            raise ValueError(
+                "TRL contiguity check failed (current_full_ids must be prefix of next_prompt_ids). "
+                f"turn={t} len(prompt_ids)={len(prompt_ids)} len(completion_ids)={len(completion_ids)} "
+                f"len(current_full_ids)={len(current_full_ids)} len(next_prompt_ids)={len(next_prompt_ids)} "
+                f"mismatch_index={mismatch} "
+                f"current_full_ids_window={current_full_ids[a0:a1]} "
+                f"next_prompt_ids_window={next_prompt_ids[a0:a1]}"
+            )
+
+        delta_ids = next_prompt_ids[len(current_full_ids) :]
+        if delta_ids:
+            start = len(completion_ids)
+            completion_ids.extend(int(x) for x in delta_ids)
+            assistant_token_mask.extend([0] * len(delta_ids))
+            logprobs.extend([0.0] * len(delta_ids))
+            end = len(completion_ids)
+            turn_offsets.append({"turn": t, "kind": "env", "start": start, "end": end})
+
+    if not (len(completion_ids) == len(logprobs) == len(assistant_token_mask)):
+        raise ValueError(
+            "Length mismatch at end of episode: "
+            f"len(completion_ids)={len(completion_ids)} len(logprobs)={len(logprobs)} "
+            f"len(assistant_token_mask)={len(assistant_token_mask)}"
+        )
+    if any(m not in (0, 1, True, False) for m in assistant_token_mask):
+        raise ValueError("assistant_token_mask must contain only 0/1 values")
+    assistant_token_mask = [1 if bool(m) else 0 for m in assistant_token_mask]
+    logprobs = [float(x) for x in logprobs]
+
     return {
-        "prompt_ids": prompt_ids or [],
+        "prompt_ids": prompt_ids,
         "completion_ids": completion_ids,
         "logprobs": logprobs,
+        "assistant_token_mask": assistant_token_mask,
+        "turn_offsets": turn_offsets,
         "layer_history": state.layer_history,
         "terminate_reason": state.terminate_reason,
         "num_user_turns": state.num_user_turns,

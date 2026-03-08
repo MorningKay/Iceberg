@@ -149,6 +149,7 @@ def _rollout_func(prompts, trainer, **kwargs):
         "prompt_ids": [],
         "completion_ids": [],
         "logprobs": [],
+        "assistant_token_mask": [],
         "layer_history": [],
         "terminate_reason": [],
         "num_user_turns": [],
@@ -180,6 +181,7 @@ def _rollout_func(prompts, trainer, **kwargs):
             results["prompt_ids"].append(episode.get("prompt_ids", []))
             results["completion_ids"].append(episode.get("completion_ids", []))
             results["logprobs"].append(episode.get("logprobs", []))
+            results["assistant_token_mask"].append(episode.get("assistant_token_mask", []))
             results["layer_history"].append(episode.get("layer_history", []))
             results["terminate_reason"].append(episode.get("terminate_reason", ""))
             results["num_user_turns"].append(episode.get("num_user_turns", 0))
@@ -188,9 +190,33 @@ def _rollout_func(prompts, trainer, **kwargs):
             results["dia_id"].append(dia_id)
 
     expected = len(prompts) * num_generations
-    assert len(results["completion_ids"]) == expected
-    assert len(results["layer_history"]) == expected
-    assert len(results["num_user_turns"]) == expected
+    for key, value in results.items():
+        if len(value) != expected:
+            raise ValueError(
+                f"rollout_func output length mismatch for key '{key}': "
+                f"len={len(value)} expected={expected}"
+            )
+
+    for i in range(expected):
+        comp = results["completion_ids"][i]
+        lp = results["logprobs"][i]
+        mask = results["assistant_token_mask"][i]
+        if len(lp) != len(comp):
+            raise ValueError(
+                f"rollout_func token alignment error at sample {i}: "
+                f"len(logprobs)={len(lp)} len(completion_ids)={len(comp)}"
+            )
+        if len(mask) != len(comp):
+            raise ValueError(
+                f"rollout_func mask alignment error at sample {i}: "
+                f"len(assistant_token_mask)={len(mask)} len(completion_ids)={len(comp)}"
+            )
+        if sum(1 for m in mask if bool(m)) == 0:
+            # Warn only: allow empty-mask samples to pass through.
+            print(
+                f"WARNING: assistant_token_mask sum==0 at sample {i} dia_id={results['dia_id'][i]}",
+                flush=True,
+            )
     if expected > 0:
         print(
             "rollout_func lengths:",
