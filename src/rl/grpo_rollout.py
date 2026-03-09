@@ -72,6 +72,96 @@ def _apply_chat_template(
     )
 
 
+def _chat_template_ids(
+    tokenizer,
+    messages: List[Dict[str, str]],
+    *,
+    add_generation_prompt: bool,
+) -> List[int]:
+    encoded = _apply_chat_template(
+        tokenizer,
+        messages,
+        tokenize=True,
+        add_generation_prompt=add_generation_prompt,
+    )
+    if isinstance(encoded, dict):
+        input_ids = encoded["input_ids"]
+    else:
+        input_ids = encoded
+
+    if torch.is_tensor(input_ids):
+        if input_ids.ndim == 2:
+            return input_ids[0].detach().cpu().tolist()
+        if input_ids.ndim == 1:
+            return input_ids.detach().cpu().tolist()
+    if isinstance(input_ids, list):
+        if input_ids and isinstance(input_ids[0], list):
+            return [int(x) for x in input_ids[0]]
+        return [int(x) for x in input_ids]
+    raise TypeError(f"Unsupported chat template output type: {type(input_ids)}")
+
+
+def _logprobs_for_suffix(
+    model: torch.nn.Module,
+    full_ids: List[int],
+    suffix_len: int,
+) -> List[float]:
+    if suffix_len == 0:
+        return []
+
+    was_training = model.training
+    model.eval()
+    try:
+        input_ids = torch.tensor(full_ids, dtype=torch.long, device=_device_from_model(model)).unsqueeze(0)
+        with torch.inference_mode():
+            outputs = model(input_ids=input_ids, attention_mask=None)
+            logits = outputs.logits
+            log_probs = torch.log_softmax(logits, dim=-1)
+            token_logprobs = log_probs[:, :-1, :].gather(
+                -1, input_ids[:, 1:].unsqueeze(-1)
+            ).squeeze(-1)
+    finally:
+        model.train(was_training)
+
+    if suffix_len > token_logprobs.shape[1]:
+        raise ValueError(
+            f"Requested suffix_len={suffix_len} exceeds available shifted token logprobs={token_logprobs.shape[1]}"
+        )
+    return token_logprobs[0][-suffix_len:].detach().cpu().tolist()
+
+
+def _assert_prefix(
+    current_full_ids: List[int],
+    next_ids: List[int],
+    *,
+    turn: int,
+    boundary: str,
+) -> None:
+    if next_ids[: len(current_full_ids)] == current_full_ids:
+        return
+
+    mismatch = None
+    limit = min(len(current_full_ids), len(next_ids))
+    for idx in range(limit):
+        if current_full_ids[idx] != next_ids[idx]:
+            mismatch = idx
+            break
+    if mismatch is None and len(current_full_ids) > len(next_ids):
+        mismatch = len(next_ids)
+    if mismatch is None:
+        mismatch = 0
+    window = 10
+    a0 = max(0, mismatch - window)
+    a1 = mismatch + window
+    raise ValueError(
+        f"TRL contiguity check failed at {boundary} boundary "
+        "(current_full_ids must be a prefix of the canonical chat-template ids). "
+        f"turn={turn} len(current_full_ids)={len(current_full_ids)} len(next_ids)={len(next_ids)} "
+        f"mismatch_index={mismatch} current_full_ids_window={current_full_ids[a0:a1]} "
+        f"next_ids_window={next_ids[a0:a1]}"
+    )
+
+
 def _generate_main(
     model: torch.nn.Module,
     tokenizer: AutoTokenizer,
@@ -230,16 +320,15 @@ def run_episode(
         {"turn": 1, "layer": layer, "label": label, "confidence": conf}
     )
 
-    # Initial assistant generation prefix (this is the fixed prompt for the whole trajectory).
-    prompt_enc = _apply_chat_template(
-        main_tokenizer, h_main, tokenize=True, add_generation_prompt=True
+    # The initial assistant generation prompt is the fixed prefix for the whole
+    # trajectory. Every later token is derived from canonical chat-template
+    # deltas so that completion_ids remains the exact contiguous suffix after
+    # prompt_ids.
+    prompt_ids = _chat_template_ids(
+        main_tokenizer,
+        h_main,
+        add_generation_prompt=True,
     )
-    if torch.is_tensor(prompt_enc):
-        prompt_ids: List[int] = prompt_enc[0].detach().cpu().tolist()
-    elif isinstance(prompt_enc, dict):
-        prompt_ids = prompt_enc["input_ids"][0].detach().cpu().tolist()
-    else:
-        prompt_ids = list(prompt_enc)
 
     completion_ids: List[int] = []
     assistant_token_mask: List[int] = []
@@ -254,33 +343,50 @@ def run_episode(
                 max_new_tokens=cfg.main_max_new_tokens,
                 temperature=cfg.main_temperature,
                 top_p=cfg.main_top_p,
-                logprobs=True,
-                main_model=main_model,
+                logprobs=False,
             )
             assistant_text = (result.get("text") or "").strip()
-            gen_ids = result.get("token_ids") or []
-            gen_logprobs = result.get("token_logprobs") or []
         else:
-            assistant_text, gen_ids, gen_logprobs, _step_prompt_ids = _generate_main(
+            assistant_text, _gen_ids, _gen_logprobs, _step_prompt_ids = _generate_main(
                 main_model, main_tokenizer, h_main, cfg
             )
 
-        if gen_logprobs is None or len(gen_logprobs) != len(gen_ids):
-            raise ValueError(
-                f"Assistant generation returned misaligned token ids/logprobs at turn {t}: "
-                f"len(token_ids)={len(gen_ids)} len(token_logprobs)={0 if gen_logprobs is None else len(gen_logprobs)}"
-            )
-
-        # Append assistant/policy tokens for this turn.
-        start = len(completion_ids)
-        completion_ids.extend(int(x) for x in gen_ids)
-        assistant_token_mask.extend([1] * len(gen_ids))
-        logprobs.extend(float(x) for x in gen_logprobs)
-        end = len(completion_ids)
-        turn_offsets.append({"turn": t, "kind": "assistant", "start": start, "end": end})
-
         h_main.append({"role": "assistant", "content": assistant_text})
         h_user.append({"role": "user", "content": assistant_text})
+
+        # Canonicalize the assistant action by diffing successive chat-template
+        # tokenizations of h_main. This keeps completion_ids equal to the exact
+        # suffix produced by the same tokenizer/template used for later turns.
+        current_full_ids = prompt_ids + completion_ids
+        after_assistant_ids = _chat_template_ids(
+            main_tokenizer,
+            h_main,
+            add_generation_prompt=False,
+        )
+        _assert_prefix(
+            current_full_ids,
+            after_assistant_ids,
+            turn=t,
+            boundary="assistant",
+        )
+        assistant_delta_ids = after_assistant_ids[len(current_full_ids) :]
+
+        start = len(completion_ids)
+        completion_ids.extend(int(x) for x in assistant_delta_ids)
+        assistant_token_mask.extend([1] * len(assistant_delta_ids))
+        assistant_delta_logprobs = _logprobs_for_suffix(
+            main_model,
+            current_full_ids + assistant_delta_ids,
+            len(assistant_delta_ids),
+        )
+        if len(assistant_delta_logprobs) != len(assistant_delta_ids):
+            raise ValueError(
+                f"Canonical assistant delta logprobs misaligned at turn {t}: "
+                f"len(delta_ids)={len(assistant_delta_ids)} len(logprobs)={len(assistant_delta_logprobs)}"
+            )
+        logprobs.extend(float(x) for x in assistant_delta_logprobs)
+        end = len(completion_ids)
+        turn_offsets.append({"turn": t, "kind": "assistant", "start": start, "end": end})
 
         if t == cfg.max_turns:
             state.terminate_reason = "max_turns"
@@ -328,44 +434,22 @@ def run_episode(
         h_user.append({"role": "assistant", "content": user_text})
         state.num_user_turns += 1
 
-        # Append environment/user/template delta tokens so that:
-        #   input_ids == prompt_ids + completion_ids
-        # and completion_ids contains all post-prompt tokens across turns.
-        next_prompt_enc = _apply_chat_template(
-            main_tokenizer, h_main, tokenize=True, add_generation_prompt=True
-        )
-        if torch.is_tensor(next_prompt_enc):
-            next_prompt_ids: List[int] = next_prompt_enc[0].detach().cpu().tolist()
-        elif isinstance(next_prompt_enc, dict):
-            next_prompt_ids = next_prompt_enc["input_ids"][0].detach().cpu().tolist()
-        else:
-            next_prompt_ids = list(next_prompt_enc)
-
         current_full_ids = prompt_ids + completion_ids
-        if next_prompt_ids[: len(current_full_ids)] != current_full_ids:
-            # Find first mismatch index for debugging.
-            mismatch = None
-            limit = min(len(current_full_ids), len(next_prompt_ids))
-            for j in range(limit):
-                if current_full_ids[j] != next_prompt_ids[j]:
-                    mismatch = j
-                    break
-            if mismatch is None and len(current_full_ids) > len(next_prompt_ids):
-                mismatch = len(next_prompt_ids)
-            if mismatch is None:
-                mismatch = 0
-            window = 10
-            a0 = max(0, mismatch - window)
-            a1 = mismatch + window
-            raise ValueError(
-                "TRL contiguity check failed (current_full_ids must be prefix of next_prompt_ids). "
-                f"turn={t} len(prompt_ids)={len(prompt_ids)} len(completion_ids)={len(completion_ids)} "
-                f"len(current_full_ids)={len(current_full_ids)} len(next_prompt_ids)={len(next_prompt_ids)} "
-                f"mismatch_index={mismatch} "
-                f"current_full_ids_window={current_full_ids[a0:a1]} "
-                f"next_prompt_ids_window={next_prompt_ids[a0:a1]}"
-            )
+        next_prompt_ids = _chat_template_ids(
+            main_tokenizer,
+            h_main,
+            add_generation_prompt=True,
+        )
+        _assert_prefix(
+            current_full_ids,
+            next_prompt_ids,
+            turn=t,
+            boundary="user",
+        )
 
+        # User/environment/template continuation tokens stay in the trajectory
+        # so prompt_ids + completion_ids remains contiguous, but they are masked
+        # out of the policy loss and use dummy dense logprobs.
         delta_ids = next_prompt_ids[len(current_full_ids) :]
         if delta_ids:
             start = len(completion_ids)
