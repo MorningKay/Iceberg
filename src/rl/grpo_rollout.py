@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -153,6 +154,12 @@ def _assert_prefix(
     window = 10
     a0 = max(0, mismatch - window)
     a1 = mismatch + window
+    if os.environ.get("ICEBERG_DEBUG_ROLLOUT") == "1":
+        print(
+            "[ICEBERG_DEBUG_ROLLOUT] prefix_mismatch "
+            f"boundary={boundary} turn={turn} mismatch_index={mismatch} "
+            f"current_window={current_full_ids[a0:a1]} next_window={next_ids[a0:a1]}"
+        )
     raise ValueError(
         f"TRL contiguity check failed at {boundary} boundary "
         "(current_full_ids must be a prefix of the canonical chat-template ids). "
@@ -387,6 +394,13 @@ def run_episode(
         logprobs.extend(float(x) for x in assistant_delta_logprobs)
         end = len(completion_ids)
         turn_offsets.append({"turn": t, "kind": "assistant", "start": start, "end": end})
+        if os.environ.get("ICEBERG_DEBUG_ROLLOUT") == "1":
+            print(
+                "[ICEBERG_DEBUG_ROLLOUT] assistant_delta "
+                f"turn={t} delta_len={len(assistant_delta_ids)} "
+                f"completion_len={len(completion_ids)} logprobs_len={len(logprobs)} "
+                f"mask_len={len(assistant_token_mask)}"
+            )
 
         if t == cfg.max_turns:
             state.terminate_reason = "max_turns"
