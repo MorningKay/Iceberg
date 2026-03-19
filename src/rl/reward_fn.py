@@ -67,6 +67,7 @@ def compute_episode_reward(
         "base": 0.0,
         "prog": 0.0,
     }
+    prev_dist = None
 
     for idx, item in enumerate(layer_history, start=1):
         layer = int(item["layer"])
@@ -80,27 +81,27 @@ def compute_episode_reward(
 
         base_shallow = min(layer, 2.0)
         base_deep = max(layer - 2.0, 0.0)
-        r_base = confidence * ((1 - stage) * base_shallow + stage * base_deep) / cfg.max_depth
+        r_base = confidence * (
+            (1 - stage) * base_shallow + stage * base_deep
+        ) / max(float(cfg.max_depth), 1.0)
         reward_term_sums["base"] += r_base
 
-        r_prog = cfg.beta if layer == prev_layer + 1 else 0.0
-        reward_term_sums["prog"] += r_prog
-        if r_prog > 0:
-            progress_count += 1
-
-        r_regress = cfg.delta * max(prev_layer - layer, 0) / cfg.max_depth
-
         expected = _expected_layer(idx, num_user_turns, cfg.max_depth)
-        r_fast = cfg.stage_penalty * max(layer - expected, 0) / cfg.max_depth
+        dist = abs(float(layer) - float(expected))
+        if prev_dist is None:
+            r_prog = 0.0
+        else:
+            move = prev_dist - dist
+            r_prog = cfg.beta * move
+            if move > 0:
+                progress_count += 1
 
-        window = max(cfg.rep_window, 1)
-        recent = layer_history[max(0, idx - window) : idx]
-        rep_count = sum(1 for entry in recent if int(entry["layer"]) == layer)
-        r_rep = cfg.delta_rep * (rep_count / window)
+        if idx == 1:
+            r_prog += 0.5 * cfg.beta * (1.0 - dist / max(float(cfg.max_depth), 1.0))
 
-        r_raw = r_base + r_prog - r_regress - r_fast - r_rep
-        r_k = _sigmoid(cfg.k2 * (r_raw - cfg.c2))
-        rewards.append(r_k)
+        r_raw = r_base + r_prog
+        rewards.append(float(r_raw))
+        prev_dist = dist
 
     r_episode = sum(rewards) / len(rewards)
 
