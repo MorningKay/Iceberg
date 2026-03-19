@@ -28,6 +28,9 @@ class VLLMChatClient:
             "max_tokens": max_new_tokens,
             "temperature": temperature,
             "top_p": top_p,
+            "chat_template_kwargs": {
+                "enable_thinking": False
+            },
         }
         if logprobs:
             payload["logprobs"] = True
