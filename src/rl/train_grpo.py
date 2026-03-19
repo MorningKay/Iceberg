@@ -237,6 +237,10 @@ def main() -> None:
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name_or_path)
     model = AutoModelForCausalLM.from_pretrained(cfg.model_name_or_path)
+    # After loading model, before creating GRPOTrainer
+    model.config.use_cache = False  # common requirement with checkpointing
+    # Enable gradient checkpointing in non-reentrant mode (DDP-safe)
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     peft_config = LoraConfig(
         r=cfg.lora_r,
@@ -271,6 +275,7 @@ def main() -> None:
         vllm_gpu_memory_utilization=cfg.vllm_gpu_memory_utilization,
         vllm_max_model_length=cfg.vllm_max_model_length,
         vllm_tensor_parallel_size=cfg.vllm_tensor_parallel_size,
+        ddp_find_unused_parameters=False,
     )
 
     base_reward_cfg = RewardConfig()
@@ -286,6 +291,10 @@ def main() -> None:
         rollout_func=_rollout_func,
         processing_class=tokenizer,
         peft_config=peft_config,
+    )
+    trainer.model.config.use_cache = False
+    trainer.model.gradient_checkpointing_enable(
+        gradient_checkpointing_kwargs={"use_reentrant": False}
     )
 
     if cfg.wandb_project:
@@ -348,6 +357,9 @@ def main() -> None:
     )
     trainer.reward_defaults = base_reward_cfg
 
+    m = trainer.model
+    if hasattr(m, "_set_static_graph"):
+        m._set_static_graph()
     trainer.train()
 
 
