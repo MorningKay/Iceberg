@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -35,18 +35,38 @@ def _expected_layer(k: int, k_total: int, max_depth: int) -> int:
     return min(max_depth, 1 + (k - 1) // step)
 
 
+def _empty_reward_extra(num_items: int, term_names: Optional[List[str]] = None) -> Dict[str, Any]:
+    names = term_names or ["base", "prog"]
+    reward_terms = {name: [0.0 for _ in range(num_items)] for name in names}
+    reward_term_means = {name: 0.0 for name in names}
+    return {
+        "reward_terms": reward_terms,
+        "reward_term_means": reward_term_means,
+    }
+
+
 def compute_episode_reward(
     layer_history: List[Dict[str, Any]],
     num_user_turns: int,
     cfg: RewardConfig,
     terminate_reason: Optional[str] = None,
-) -> float:
+) -> Dict[str, Any]:
     if num_user_turns <= 0:
-        return 0.0
+        return {
+            "reward": 0.0,
+            "reward_terms": {
+                "base": 0.0,
+                "prog": 0.0,
+            },
+        }
 
     rewards: List[float] = []
     progress_count = 0
     deepest_layer = 0
+    reward_term_sums: Dict[str, float] = {
+        "base": 0.0,
+        "prog": 0.0,
+    }
 
     for idx, item in enumerate(layer_history, start=1):
         layer = int(item["layer"])
@@ -61,8 +81,10 @@ def compute_episode_reward(
         base_shallow = min(layer, 2.0)
         base_deep = max(layer - 2.0, 0.0)
         r_base = confidence * ((1 - stage) * base_shallow + stage * base_deep) / cfg.max_depth
+        reward_term_sums["base"] += r_base
 
         r_prog = cfg.beta if layer == prev_layer + 1 else 0.0
+        reward_term_sums["prog"] += r_prog
         if r_prog > 0:
             progress_count += 1
 
@@ -93,7 +115,14 @@ def compute_episode_reward(
     if terminate_reason == "no_progress_5":
         r_episode -= cfg.penalty_early_terminate
 
-    return float(r_episode)
+    reward_terms = {
+        name: float(total / num_user_turns)
+        for name, total in reward_term_sums.items()
+    }
+    return {
+        "reward": float(r_episode),
+        "reward_terms": reward_terms,
+    }
 
 
 def _build_reward_cfg(default_cfg: RewardConfig, override: Optional[Dict[str, Any]]) -> RewardConfig:
@@ -114,7 +143,7 @@ def trl_reward_func(
     completion_ids,
     trainer_state=None,
     **kwargs,
-) -> List[float]:
+) -> Tuple[List[float], Dict[str, Any]]:
     layer_history_batch = kwargs.get("layer_history")
     num_user_turns_batch = kwargs.get("num_user_turns")
     terminate_reason_batch = kwargs.get("terminate_reason")
@@ -122,7 +151,8 @@ def trl_reward_func(
     reward_defaults_batch = kwargs.get("reward_defaults")
 
     if layer_history_batch is None or num_user_turns_batch is None:
-        return [0.0 for _ in completions]
+        zero_rewards = [0.0 for _ in completions]
+        return zero_rewards, _empty_reward_extra(len(zero_rewards))
 
     if len(layer_history_batch) != len(num_user_turns_batch) or len(layer_history_batch) != len(
         completions
@@ -135,6 +165,7 @@ def trl_reward_func(
         )
 
     rewards: List[float] = []
+    episode_results: List[Dict[str, Any]] = []
     for idx, (layer_history, num_user_turns) in enumerate(
         zip(layer_history_batch, num_user_turns_batch)
     ):
@@ -152,12 +183,37 @@ def trl_reward_func(
         if terminate_reason_batch and idx < len(terminate_reason_batch):
             terminate_reason = terminate_reason_batch[idx]
 
-        reward = compute_episode_reward(
+        reward_result = compute_episode_reward(
             layer_history=layer_history,
             num_user_turns=int(num_user_turns),
             cfg=cfg,
             terminate_reason=terminate_reason,
         )
-        rewards.append(float(reward))
+        rewards.append(float(reward_result["reward"]))
+        episode_results.append(reward_result)
 
-    return rewards
+    term_names: List[str] = []
+    for result in episode_results:
+        for name in result.get("reward_terms", {}):
+            if name not in term_names:
+                term_names.append(name)
+
+    if not term_names:
+        return rewards, _empty_reward_extra(len(rewards))
+
+    reward_terms = {
+        name: [
+            float(result.get("reward_terms", {}).get(name, 0.0))
+            for result in episode_results
+        ]
+        for name in term_names
+    }
+    reward_term_means = {
+        name: float(sum(values) / len(values)) if values else 0.0
+        for name, values in reward_terms.items()
+    }
+    extra = {
+        "reward_terms": reward_terms,
+        "reward_term_means": reward_term_means,
+    }
+    return rewards, extra
