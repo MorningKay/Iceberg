@@ -98,6 +98,7 @@ def compute_episode_reward(
 
         if idx == 1:
             r_prog += 0.5 * cfg.beta * (1.0 - dist / max(float(cfg.max_depth), 1.0))
+        reward_term_sums["prog"] += r_prog
 
         r_raw = r_base + r_prog
         rewards.append(float(r_raw))
