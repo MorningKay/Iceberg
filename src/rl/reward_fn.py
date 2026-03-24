@@ -30,13 +30,14 @@ def _sigmoid(x: float) -> float:
     return 1.0 / (1.0 + math.exp(-x))
 
 
-def _expected_layer(k: int, k_total: int, max_depth: int) -> int:
-    step = math.ceil(k_total / max_depth)
-    return min(max_depth, 1 + (k - 1) // step)
+_EARLY_STAGE_PROFILE = [1.00, 1.00, 0.55, 0.20, 0.05]
+_MIDDLE_STAGE_PROFILE = [0.35, 0.75, 1.00, 1.00, 0.55]
+_LATE_STAGE_PROFILE = [0.10, 0.30, 0.70, 1.00, 1.00]
+_DEFAULT_TERM_NAMES = ["stage_match", "transition", "stability", "coverage"]
 
 
 def _empty_reward_extra(num_items: int, term_names: Optional[List[str]] = None) -> Dict[str, Any]:
-    names = term_names or ["base", "prog"]
+    names = term_names or _DEFAULT_TERM_NAMES
     reward_terms = {name: [0.0 for _ in range(num_items)] for name in names}
     reward_term_means = {name: 0.0 for name in names}
     return {
@@ -45,82 +46,127 @@ def _empty_reward_extra(num_items: int, term_names: Optional[List[str]] = None) 
     }
 
 
+def _blend_profiles(left: List[float], right: List[float], t: float) -> List[float]:
+    blend = max(0.0, min(1.0, t))
+    return [(1.0 - blend) * l + blend * r for l, r in zip(left, right)]
+
+
+def _stage_profile_weights(u: float, cfg: RewardConfig) -> List[float]:
+    s = _sigmoid(cfg.kappa * (u - cfg.c))
+    if s <= 0.5:
+        return _blend_profiles(_EARLY_STAGE_PROFILE, _MIDDLE_STAGE_PROFILE, s / 0.5)
+    return _blend_profiles(_MIDDLE_STAGE_PROFILE, _LATE_STAGE_PROFILE, (s - 0.5) / 0.5)
+
+
+def _transition_base_score(delta: int) -> float:
+    if delta == 1:
+        return 1.0
+    if delta == 0:
+        return 0.85
+    if delta == 2:
+        return 0.60
+    if delta == -1:
+        return 0.55
+    if delta == -2:
+        return 0.25
+    return 0.0
+
+
+def _max_confidence_for_layers(layer_history: List[Dict[str, Any]], valid_layers: set[int]) -> float:
+    best = 0.0
+    for item in layer_history:
+        layer = int(item["layer"])
+        if layer in valid_layers:
+            best = max(best, float(item["confidence"]))
+    return best
+
+
 def compute_episode_reward(
     layer_history: List[Dict[str, Any]],
     num_user_turns: int,
     cfg: RewardConfig,
     terminate_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
-    if num_user_turns <= 0:
+    if num_user_turns <= 0 or not layer_history:
         return {
             "reward": 0.0,
             "reward_terms": {
-                "base": 0.0,
-                "prog": 0.0,
+                "stage_match": 0.0,
+                "transition": 0.0,
+                "stability": 0.0,
+                "coverage": 0.0,
             },
         }
 
-    rewards: List[float] = []
-    progress_count = 0
-    deepest_layer = 0
-    reward_term_sums: Dict[str, float] = {
-        "base": 0.0,
-        "prog": 0.0,
-    }
-    prev_dist = None
+    stage_scores: List[float] = []
+    transition_scores: List[float] = []
+    layers: List[int] = []
+    confidences: List[float] = []
+    prev_layer: Optional[int] = None
+    prev_confidence: Optional[float] = None
 
     for idx, item in enumerate(layer_history, start=1):
-        layer = int(item["layer"])
-        confidence = float(item["confidence"])
-        prev_layer = int(layer_history[idx - 2]["layer"]) if idx > 1 else layer
-
-        deepest_layer = max(deepest_layer, layer)
-
+        layer = max(1, min(5, int(item["layer"])))
+        confidence = max(0.0, min(1.0, float(item["confidence"])))
+        layers.append(layer)
+        confidences.append(confidence)
         u = idx / float(num_user_turns)
-        stage = _sigmoid(cfg.kappa * (u - cfg.c))
+        stage_weights = _stage_profile_weights(u, cfg)
+        stage_scores.append(confidence * stage_weights[layer - 1])
 
-        base_shallow = min(layer, 2.0)
-        base_deep = max(layer - 2.0, 0.0)
-        r_base = confidence * (
-            (1 - stage) * base_shallow + stage * base_deep
-        ) / max(float(cfg.max_depth), 1.0)
-        reward_term_sums["base"] += r_base
-
-        expected = _expected_layer(idx, num_user_turns, cfg.max_depth)
-        dist = abs(float(layer) - float(expected))
-        if prev_dist is None:
-            r_prog = 0.0
+        if prev_layer is None or prev_confidence is None:
+            transition_scores.append(0.60 * confidence)
         else:
-            move = prev_dist - dist
-            r_prog = cfg.beta * move
-            if move > 0:
-                progress_count += 1
+            delta = layer - prev_layer
+            pair_confidence = 0.5 * (prev_confidence + confidence)
+            transition_scores.append(_transition_base_score(delta) * pair_confidence)
 
-        if idx == 1:
-            r_prog += 0.5 * cfg.beta * (1.0 - dist / max(float(cfg.max_depth), 1.0))
-        reward_term_sums["prog"] += r_prog
+        prev_layer = layer
+        prev_confidence = confidence
 
-        r_raw = r_base + r_prog
-        rewards.append(float(r_raw))
-        prev_dist = dist
+    stage_match = float(sum(stage_scores) / len(stage_scores)) if stage_scores else 0.0
+    transition = float(sum(transition_scores) / len(transition_scores)) if transition_scores else 0.0
 
-    r_episode = sum(rewards) / len(rewards)
+    tail_n = max(2, math.ceil(num_user_turns / 3))
+    tail_layers = layers[-tail_n:]
+    tail_confidences = confidences[-tail_n:]
+    tail_deep_presence = (
+        sum(conf * max(layer - 2, 0) / 3.0 for layer, conf in zip(tail_layers, tail_confidences))
+        / len(tail_layers)
+    )
+    if len(tail_layers) <= 1:
+        tail_smoothness = 1.0
+    else:
+        tail_smoothness_scores = [
+            1.0 if abs(curr - prev) <= 1 else 0.5 if abs(curr - prev) == 2 else 0.0
+            for prev, curr in zip(tail_layers, tail_layers[1:])
+        ]
+        tail_smoothness = sum(tail_smoothness_scores) / len(tail_smoothness_scores)
+    stability = float(0.70 * tail_deep_presence + 0.30 * tail_smoothness)
 
-    if cfg.bonus_depth and deepest_layer >= cfg.max_depth:
-        r_episode += cfg.bonus_depth
+    surface_conf = _max_confidence_for_layers(layer_history, {1, 2})
+    emotion_conf = _max_confidence_for_layers(layer_history, {3, 4})
+    deep_conf = _max_confidence_for_layers(layer_history, {5})
+    coverage = float((surface_conf + emotion_conf + deep_conf) / 3.0)
 
-    if cfg.bonus_progress and progress_count >= cfg.bonus_progress_min:
-        r_episode += cfg.bonus_progress
+    reward_terms = {
+        "stage_match": stage_match,
+        "transition": transition,
+        "stability": stability,
+        "coverage": coverage,
+    }
+    r_episode = (
+        0.35 * reward_terms["stage_match"]
+        + 0.30 * reward_terms["transition"]
+        + 0.20 * reward_terms["stability"]
+        + 0.15 * reward_terms["coverage"]
+    )
 
     if terminate_reason == "empty_next_user":
         r_episode -= cfg.penalty_empty_user
     if terminate_reason == "no_progress_5":
         r_episode -= cfg.penalty_early_terminate
 
-    reward_terms = {
-        name: float(total / num_user_turns)
-        for name, total in reward_term_sums.items()
-    }
     return {
         "reward": float(r_episode),
         "reward_terms": reward_terms,
