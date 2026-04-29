@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_ZH.md)
 
-> This version is adapted for **ASCEND-NPU**. Environment management uses `uv`; start by running `uv sync` to synchronize Python dependencies. In addition to uv-managed dependencies, install these target-runtime packages separately: `torch==2.7.1`, `torch_npu==2.7.1`, `vllm==0.11.0`, and `vllm-ascend==0.11.0rc1`.
+> This version is adapted for **ASCEND-NPU**. Environment management uses `uv`; start by running `uv sync` to synchronize Python dependencies. In addition to uv-managed dependencies, install these target-runtime packages separately: `torch==2.7.1`, `torch_npu==2.7.1`, `vllm==0.11.0`, `vllm-ascend==0.11.0rc1`, and the project-specific TRL fork at <https://github.com/MorningKay/trl.git>.
 
 Iceberg is a research project for Chinese multi-turn empathetic dialogue RL. It trains a 5-way Iceberg-layer classifier, optionally fine-tunes a user-agent simulator with LLaMA-Factory, and trains the main assistant model with TRL GRPO. The GRPO stage uses external vLLM services for online two-agent rollout and uses classifier-produced layer histories to compute rewards.
 
@@ -29,6 +29,12 @@ torch==2.7.1
 torch_npu==2.7.1
 vllm==0.11.0
 vllm-ascend==0.11.0rc1
+```
+
+This project also depends on a modified TRL fork for the Iceberg GRPO tuple reward and rollout behavior. Install the fork in the same environment used for GRPO:
+
+```bash
+uv pip install git+https://github.com/MorningKay/trl.git
 ```
 
 For vLLM, torch, and CANN compatibility, see:

@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_ZH.md)
 
-> 本版本适配 **ASCEND-NPU**。环境管理使用 `uv`，首次使用请先运行 `uv sync` 同步 Python 依赖。除 `uv` 管理的依赖外，还需要在目标 Ascend 环境中单独安装：`torch==2.7.1`、`torch_npu==2.7.1`、`vllm==0.11.0`、`vllm-ascend==0.11.0rc1`。
+> 本版本适配 **ASCEND-NPU**。环境管理使用 `uv`，首次使用请先运行 `uv sync` 同步 Python 依赖。除 `uv` 管理的依赖外，还需要在目标 Ascend 环境中单独安装：`torch==2.7.1`、`torch_npu==2.7.1`、`vllm==0.11.0`、`vllm-ascend==0.11.0rc1`，以及项目使用的自定义 TRL fork：<https://github.com/MorningKay/trl.git>。
 
 Iceberg 是一个面向中文多轮共情对话的研究项目。项目包含三部分：训练 5 类冰山层级 BERT 分类器、可选地用 LLaMA-Factory 微调用户代理、最后用 TRL GRPO 训练主助手模型。GRPO 阶段使用外部 vLLM/TRL vLLM 服务做在线多轮 rollout，并用分类器输出的 iceberg layer 序列计算奖励。
 
@@ -29,6 +29,12 @@ torch==2.7.1
 torch_npu==2.7.1
 vllm==0.11.0
 vllm-ascend==0.11.0rc1
+```
+
+本项目还依赖修改过的 TRL fork，用于 Iceberg GRPO 的 tuple reward 和 rollout 行为。请在 GRPO 使用的同一个环境中安装：
+
+```bash
+uv pip install git+https://github.com/MorningKay/trl.git
 ```
 
 vLLM、torch、CANN 的版本兼容关系见：
